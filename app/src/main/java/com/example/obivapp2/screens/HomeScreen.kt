@@ -8,6 +8,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -19,6 +23,8 @@ import com.example.obivapp2.viewModel.VideoViewModel
 @Composable
 fun HomeScreen(navController: NavController, mainViewModel: MainViewModel, videoViewModel: VideoViewModel) {
     val links by mainViewModel.links
+    var expandedItemIndex by remember { mutableStateOf<Int?>(null) }
+
 
     Scaffold(
         topBar = {
@@ -30,7 +36,7 @@ fun HomeScreen(navController: NavController, mainViewModel: MainViewModel, video
             modifier = Modifier.padding(8.dp)
         ) {
             items(links) { linkData ->
-                // Ajouter une carte pour chaque élément pour un aspect distinct
+                val currentIndex = links.indexOf(linkData)
                 Card(
                     shape = RoundedCornerShape(8.dp),
                     elevation = 4.dp,
@@ -38,16 +44,49 @@ fun HomeScreen(navController: NavController, mainViewModel: MainViewModel, video
                         .padding(vertical = 4.dp)
                         .fillMaxWidth()
                         .clickable {
-                            videoViewModel.fetchLinkVideo(linkData.url)
-                            navController.navigate("video")
+                            expandedItemIndex = if (expandedItemIndex == currentIndex) null else currentIndex
                         }
                 ) {
-                    Text(
-                        text = linkData.text,
+                    Column(
                         modifier = Modifier
                             .padding(16.dp)
                             .background(Color.White)
-                    )
+                    ) {
+                        Text(
+                            text = linkData.text,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+
+                        // Afficher les boutons si l'élément est étendu
+                        if (expandedItemIndex == currentIndex) {
+                            Row(
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                IconButton(onClick = { /* Partager le lien de la vidéo */ }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Share,
+                                        contentDescription = "Partager"
+                                    )
+                                }
+                                IconButton(onClick = {
+                                    videoViewModel.fetchLinkVideo(linkData.url)
+                                    navController.navigate("video")
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Default.PlayArrow,
+                                        contentDescription = "Ouvrir"
+                                    )
+                                }
+                                IconButton(onClick = { /* Télécharger la vidéo */ }) {
+                                    Icon(
+                                        imageVector = Icons.Default.ShoppingCart,
+                                        contentDescription = "Télécharger"
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
