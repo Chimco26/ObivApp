@@ -18,7 +18,9 @@ import retrofit2.Response
 
 class VideoViewModel : ViewModel() {
     private val _videoUrl = mutableStateOf<String?>(null)
+    private val _videoUrlToShare = mutableStateOf<String?>(null)
     val videoUrl: State<String?> get() = _videoUrl
+    val videoUrlToShare: State<String?> get() = _videoUrlToShare
 
     fun fetchLinkVideo(url: String) {
         viewModelScope.launch {
@@ -55,6 +57,7 @@ class VideoViewModel : ViewModel() {
             val src = iframe.attr("src")
             if (src.contains("cldmax")) {
                 val videoId = src.substringAfterLast("/")
+                _videoUrlToShare.value = src
                 return fetchVideo(videoId)
             }
         }

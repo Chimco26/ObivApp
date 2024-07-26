@@ -1,6 +1,7 @@
 package com.example.obivapp2.screens
 
 import MainViewModel
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -15,15 +16,22 @@ import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.example.obivapp2.utils.shareLink
 import com.example.obivapp2.viewModel.VideoViewModel
 
 
 @Composable
-fun HomeScreen(navController: NavController, mainViewModel: MainViewModel, videoViewModel: VideoViewModel) {
+fun HomeScreen(
+    navController: NavController,
+    mainViewModel: MainViewModel,
+    videoViewModel: VideoViewModel
+) {
     val links by mainViewModel.links
     var expandedItemIndex by remember { mutableStateOf<Int?>(null) }
+    val context = LocalContext.current
 
 
     Scaffold(
@@ -44,7 +52,9 @@ fun HomeScreen(navController: NavController, mainViewModel: MainViewModel, video
                         .padding(vertical = 4.dp)
                         .fillMaxWidth()
                         .clickable {
-                            expandedItemIndex = if (expandedItemIndex == currentIndex) null else currentIndex
+                            videoViewModel.fetchLinkVideo(linkData.url)
+                            expandedItemIndex =
+                                if (expandedItemIndex == currentIndex) null else currentIndex
                         }
                 ) {
                     Column(
@@ -63,14 +73,19 @@ fun HomeScreen(navController: NavController, mainViewModel: MainViewModel, video
                                 horizontalArrangement = Arrangement.SpaceEvenly,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                IconButton(onClick = { /* Partager le lien de la vidéo */ }) {
+                                IconButton(onClick = {
+                                    videoViewModel.videoUrlToShare.value?.let {
+                                        shareLink(context,
+                                            it
+                                        )
+                                    }
+                                }) {
                                     Icon(
                                         imageVector = Icons.Default.Share,
                                         contentDescription = "Partager"
                                     )
                                 }
                                 IconButton(onClick = {
-                                    videoViewModel.fetchLinkVideo(linkData.url)
                                     navController.navigate("video")
                                 }) {
                                     Icon(
