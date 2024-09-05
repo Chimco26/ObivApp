@@ -52,6 +52,13 @@ fun HomeScreen(
                         .padding(vertical = 4.dp)
                         .fillMaxWidth()
                         .clickable {
+//                            if (expandedItemIndex == currentIndex){
+//                                expandedItemIndex = null
+//                                videoViewModel.resetLinkVideo()
+//                            } else{
+//                                expandedItemIndex = currentIndex
+//                                videoViewModel.fetchLinkVideo(linkData.url)
+//                            }
                             videoViewModel.fetchLinkVideo(linkData.url)
                             expandedItemIndex =
                                 if (expandedItemIndex == currentIndex) null else currentIndex

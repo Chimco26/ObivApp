@@ -11,7 +11,7 @@ object RetrofitInstance {
     }
     val apiCld: ApiService by lazy {
         Retrofit.Builder()
-            .baseUrl("https://cldmax.com/iframe/")
+            .baseUrl("https://sharecloudy.com/iframe/")
             .addConverterFactory(ScalarsConverterFactory.create())
             .build()
             .create(ApiService::class.java)

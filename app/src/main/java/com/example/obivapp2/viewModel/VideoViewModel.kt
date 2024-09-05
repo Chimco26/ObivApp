@@ -13,7 +13,9 @@ import org.jsoup.nodes.Document
 import retrofit2.HttpException
 import java.io.IOException
 import okhttp3.ResponseBody
+import org.jsoup.HttpStatusException
 import retrofit2.Response
+import java.net.SocketTimeoutException
 
 
 class VideoViewModel : ViewModel() {
@@ -22,6 +24,11 @@ class VideoViewModel : ViewModel() {
     val videoUrl: State<String?> get() = _videoUrl
     val videoUrlToShare: State<String?> get() = _videoUrlToShare
 
+    fun resetLinkVideo(){
+        _videoUrl.value = null
+    }
+
+    // reçoit l'url en paramètre et va récuperer la page html.
     fun fetchLinkVideo(url: String) {
         viewModelScope.launch {
             try {
@@ -50,22 +57,22 @@ class VideoViewModel : ViewModel() {
         }
     }
 
+    // reçois tout le block html et retrouve le lien vers la plateforme "mayicloud".
     private suspend fun parseHtmlForVideoUrl(htmlContent: String): String? {
         val document: Document = Jsoup.parse(htmlContent)
         val iframes = document.select("iframe[src]")
         for (iframe in iframes) {
             val src = iframe.attr("src")
-            if (src.contains("cldmax")) {
-                val videoId = src.substringAfterLast("/")
+            if (src.contains("mayicloud")) {
                 _videoUrlToShare.value = src
+                val videoId = src.substringAfterLast("/")
                 return fetchVideo(videoId)
             }
         }
-
-        // Retourne null si aucune URL ne correspond
         return null
     }
 
+    // reçoit l'url du lien vers la plateforme et charge la page puis envoit toute la page à une autre fonction.
     private suspend fun fetchVideo(url: String): String? {
         return withContext(Dispatchers.IO) {
             try {
@@ -74,7 +81,7 @@ class VideoViewModel : ViewModel() {
                     val responseBody = response.body()
                     if (responseBody != null) {
                         val htmlContent = responseBody.string()
-                        return@withContext extractVideoLink(htmlContent)
+                        return@withContext extractM3U8Link(htmlContent)
                     } else {
                         Log.e("FetchVideo", "Response body is null")
                     }
@@ -92,17 +99,20 @@ class VideoViewModel : ViewModel() {
         }
     }
 
-    private fun extractVideoLink(htmlContent: String): String? {
+    // reçoit toute la page html de lecture de la video et retrouve le fichier m3u8 pour le renvoyer à l'utilisateur.
+    private fun extractM3U8Link(htmlContent: String): String? {
         val document: Document = Jsoup.parse(htmlContent)
         val scriptElements = document.getElementsByTag("script")
 
         for (element in scriptElements) {
             val scriptData = element.data()
-            if (scriptData.contains("jwplayer")) {
-                val startIndex = scriptData.indexOf("file: \"") + 7
-                val endIndex = scriptData.indexOf("\"", startIndex)
+            val normalizedData = scriptData.replace("\\s".toRegex(), "")
+            if (normalizedData.contains("file:\"")) {
+                val startIndex = normalizedData.indexOf("file:\"") + 6
+                val endIndex = normalizedData.indexOf("\"", startIndex)
                 if (startIndex != -1 && endIndex != -1) {
-                    return scriptData.substring(startIndex, endIndex)
+                    Log.e("LOG PATH","aaa"+normalizedData.substring(startIndex, endIndex))
+                    return normalizedData.substring(startIndex, endIndex)
                 }
             }
         }
