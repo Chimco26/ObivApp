@@ -30,6 +30,7 @@ fun HomeScreen(
     videoViewModel: VideoViewModel
 ) {
     val links by mainViewModel.links
+    var searchText by remember { mutableStateOf("") }
     var expandedItemIndex by remember { mutableStateOf<Int?>(null) }
     val context = LocalContext.current
 
@@ -39,19 +40,36 @@ fun HomeScreen(
             TopAppBar(title = { Text("Home Screen") })
         }
     ) { paddingValues ->
-        LazyColumn(
-            contentPadding = paddingValues,
-            modifier = Modifier.padding(8.dp)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
         ) {
-            items(links) { linkData ->
-                val currentIndex = links.indexOf(linkData)
-                Card(
-                    shape = RoundedCornerShape(8.dp),
-                    elevation = 4.dp,
-                    modifier = Modifier
-                        .padding(vertical = 4.dp)
-                        .fillMaxWidth()
-                        .clickable {
+            // Champ de recherche
+            OutlinedTextField(
+                value = searchText,
+                onValueChange = {
+                    searchText = it
+                    mainViewModel.searchVideo(searchText)
+                                },
+                label = { Text("Rechercher") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp)
+            )
+            LazyColumn(
+                contentPadding = paddingValues,
+                modifier = Modifier.padding(8.dp)
+            ) {
+                items(links) { linkData ->
+                    val currentIndex = links.indexOf(linkData)
+                    Card(
+                        shape = RoundedCornerShape(8.dp),
+                        elevation = 4.dp,
+                        modifier = Modifier
+                            .padding(vertical = 4.dp)
+                            .fillMaxWidth()
+                            .clickable {
 //                            if (expandedItemIndex == currentIndex){
 //                                expandedItemIndex = null
 //                                videoViewModel.resetLinkVideo()
@@ -59,52 +77,54 @@ fun HomeScreen(
 //                                expandedItemIndex = currentIndex
 //                                videoViewModel.fetchLinkVideo(linkData.url)
 //                            }
-                            videoViewModel.fetchLinkVideo(linkData.url)
-                            expandedItemIndex =
-                                if (expandedItemIndex == currentIndex) null else currentIndex
-                        }
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .background(Color.White)
+                                videoViewModel.fetchLinkVideo(linkData.url)
+                                expandedItemIndex =
+                                    if (expandedItemIndex == currentIndex) null else currentIndex
+                            }
                     ) {
-                        Text(
-                            text = linkData.text,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
+                        Column(
+                            modifier = Modifier
+                                .padding(16.dp)
+                                .background(Color.White)
+                        ) {
+                            Text(
+                                text = linkData.text,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
 
-                        // Afficher les boutons si l'élément est étendu
-                        if (expandedItemIndex == currentIndex) {
-                            Row(
-                                horizontalArrangement = Arrangement.SpaceEvenly,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                IconButton(onClick = {
-                                    videoViewModel.videoUrlToShare.value?.let {
-                                        shareLink(context,
-                                            it
+                            // Afficher les boutons si l'élément est étendu
+                            if (expandedItemIndex == currentIndex) {
+                                Row(
+                                    horizontalArrangement = Arrangement.SpaceEvenly,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    IconButton(onClick = {
+                                        videoViewModel.videoUrlToShare.value?.let {
+                                            shareLink(
+                                                context,
+                                                it
+                                            )
+                                        }
+                                    }) {
+                                        Icon(
+                                            imageVector = Icons.Default.Share,
+                                            contentDescription = "Partager"
                                         )
                                     }
-                                }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Share,
-                                        contentDescription = "Partager"
-                                    )
-                                }
-                                IconButton(onClick = {
-                                    navController.navigate("video")
-                                }) {
-                                    Icon(
-                                        imageVector = Icons.Default.PlayArrow,
-                                        contentDescription = "Ouvrir"
-                                    )
-                                }
-                                IconButton(onClick = { /* Télécharger la vidéo */ }) {
-                                    Icon(
-                                        imageVector = Icons.Default.ShoppingCart,
-                                        contentDescription = "Télécharger"
-                                    )
+                                    IconButton(onClick = {
+                                        navController.navigate("video")
+                                    }) {
+                                        Icon(
+                                            imageVector = Icons.Default.PlayArrow,
+                                            contentDescription = "Ouvrir"
+                                        )
+                                    }
+                                    IconButton(onClick = { /* Télécharger la vidéo */ }) {
+                                        Icon(
+                                            imageVector = Icons.Default.ShoppingCart,
+                                            contentDescription = "Télécharger"
+                                        )
+                                    }
                                 }
                             }
                         }

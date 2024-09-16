@@ -57,7 +57,7 @@ class VideoViewModel : ViewModel() {
         }
     }
 
-    // reçois tout le block html et retrouve le lien vers la plateforme "mayicloud".
+    // reçois tout le block html et retrouve le lien de la plateforme "mayicloud".
     private suspend fun parseHtmlForVideoUrl(htmlContent: String): String? {
         val document: Document = Jsoup.parse(htmlContent)
         val iframes = document.select("iframe[src]")
