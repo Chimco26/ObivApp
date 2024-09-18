@@ -2,6 +2,7 @@ package com.example.obivapp2.screens
 
 import MainViewModel
 import android.content.Context
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -17,8 +18,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import coil.compose.rememberAsyncImagePainter
+import com.example.obivapp2.R
 import com.example.obivapp2.utils.shareLink
 import com.example.obivapp2.viewModel.VideoViewModel
 
@@ -33,6 +37,9 @@ fun HomeScreen(
     var searchText by remember { mutableStateOf("") }
     var expandedItemIndex by remember { mutableStateOf<Int?>(null) }
     val context = LocalContext.current
+    val imageUrl by videoViewModel.imageUrl
+
+
 
 
     Scaffold(
@@ -98,6 +105,11 @@ fun HomeScreen(
                                     horizontalArrangement = Arrangement.SpaceEvenly,
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
+                                    Image(
+                                        painter = rememberAsyncImagePainter(imageUrl), // Remplacez par votre ressource d'image
+                                        contentDescription = "Votre image",
+                                        modifier = Modifier.size(100.dp) // Ajustez la taille selon vos besoins
+                                    )
                                     IconButton(onClick = {
                                         videoViewModel.videoUrlToShare.value?.let {
                                             shareLink(

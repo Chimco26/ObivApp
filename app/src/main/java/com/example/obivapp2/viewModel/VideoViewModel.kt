@@ -20,8 +20,10 @@ import java.net.SocketTimeoutException
 
 class VideoViewModel : ViewModel() {
     private val _videoUrl = mutableStateOf<String?>(null)
+    private val _imageUrl = mutableStateOf<String?>(null)
     private val _videoUrlToShare = mutableStateOf<String?>(null)
     val videoUrl: State<String?> get() = _videoUrl
+    val imageUrl: State<String?> get() = _imageUrl
     val videoUrlToShare: State<String?> get() = _videoUrlToShare
 
     fun resetLinkVideo(){
@@ -39,6 +41,7 @@ class VideoViewModel : ViewModel() {
                         val htmlContent = responseBody.string()
                         val videoUrl = withContext(Dispatchers.IO) {
                             parseHtmlForVideoUrl(htmlContent)
+                            extractJpgImage(htmlContent)
                         }
                         _videoUrl.value = videoUrl
                     } else {
@@ -117,6 +120,22 @@ class VideoViewModel : ViewModel() {
             }
         }
         return null
+    }
+
+    private fun extractJpgImage(htmlContent: String): String? {
+        val document: Document = Jsoup.parse(htmlContent)
+
+        // Récupérer toutes les balises <img> dans le document
+        val imgElements = document.getElementsByTag("img")
+
+        // Parcourir les balises <img> pour trouver une image en .jpg
+        for (element in imgElements) {
+            val imgUrl = element.attr("src")
+            if (imgUrl.endsWith(".jpg", ignoreCase = true)) {
+                _imageUrl.value = imgUrl
+            }
+        }
+        return null // Si aucune image en .jpg n'est trouvée, retourne null
     }
 
 }
