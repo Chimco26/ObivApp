@@ -13,9 +13,7 @@ import org.jsoup.nodes.Document
 import retrofit2.HttpException
 import java.io.IOException
 import okhttp3.ResponseBody
-import org.jsoup.HttpStatusException
 import retrofit2.Response
-import java.net.SocketTimeoutException
 
 
 class VideoViewModel : ViewModel() {
@@ -32,7 +30,7 @@ class VideoViewModel : ViewModel() {
         _videoUrlToShare.value = null
     }
 
-    fun dataIsNull() : Boolean{
+    fun isDataNull() : Boolean{
         return _imageUrl.value == null
     }
 
@@ -45,10 +43,8 @@ class VideoViewModel : ViewModel() {
                     val responseBody = response.body()
                     if (responseBody != null) {
                         val htmlContent = responseBody.string()
-                        val videoUrl = withContext(Dispatchers.IO) {
-                            parseHtmlForVideoUrl(htmlContent)
-                            extractJpgImage(htmlContent)
-                        }
+                        val videoUrl = parseHtmlForVideoUrl(htmlContent)
+                        extractJpgImage(htmlContent)
                         _videoUrl.value = videoUrl
                     } else {
                         Log.e("FetchVideo", "Response body is null")

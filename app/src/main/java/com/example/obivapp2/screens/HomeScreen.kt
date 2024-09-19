@@ -1,8 +1,6 @@
 package com.example.obivapp2.screens
 
 import MainViewModel
-import android.content.Context
-import android.widget.ProgressBar
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -19,15 +17,14 @@ import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
-import com.example.obivapp2.R
 import com.example.obivapp2.utils.shareLink
 import com.example.obivapp2.viewModel.VideoViewModel
 
@@ -43,6 +40,8 @@ fun HomeScreen(
     var expandedItemIndex by remember { mutableStateOf<Int?>(null) }
     val context = LocalContext.current
     val imageUrl by videoViewModel.imageUrl
+    var isDialogOpen by remember { mutableStateOf(false) }
+
 
 
 
@@ -108,7 +107,7 @@ fun HomeScreen(
 
                             // Afficher les boutons si l'élément est étendu
                             if (expandedItemIndex == currentIndex) {
-                                if (videoViewModel.dataIsNull()){
+                                if (videoViewModel.isDataNull()){
                                     CircularProgressIndicator(
                                         strokeWidth = 2.dp,
                                         modifier = Modifier
@@ -124,7 +123,8 @@ fun HomeScreen(
                                         Image(
                                             painter = rememberAsyncImagePainter(imageUrl), // Remplacez par votre ressource d'image
                                             contentDescription = "Votre image",
-                                            modifier = Modifier.size(100.dp), // Ajustez la taille selon vos besoins
+                                            modifier = Modifier.size(100.dp)
+                                                .clickable {isDialogOpen = true},
                                         )
                                         IconButton(onClick = {
                                             videoViewModel.videoUrlToShare.value?.let {
@@ -152,6 +152,33 @@ fun HomeScreen(
                                                 imageVector = Icons.Default.ShoppingCart,
                                                 contentDescription = "Télécharger"
                                             )
+                                        }
+                                        if (isDialogOpen) {
+                                            Dialog(
+                                                onDismissRequest = {
+                                                    // Fermer le Dialog lorsque l'utilisateur clique en dehors
+                                                    isDialogOpen = false
+                                                },
+                                                properties = DialogProperties(usePlatformDefaultWidth = false) // Pour que l'image prenne tout l'écran si nécessaire
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxSize() // Le Box prend tout l'écran pour afficher l'image en grand
+                                                        .clickable {
+                                                            // Fermer le Dialog lorsque l'image agrandie est cliquée
+                                                            isDialogOpen = false
+                                                        }
+                                                ) {
+                                                    Image(
+                                                        painter = rememberAsyncImagePainter(imageUrl),
+                                                        contentDescription = "Image agrandie",
+                                                        modifier = Modifier
+                                                            .align(Alignment.Center) // Centrer l'image dans le Dialog
+                                                            .fillMaxSize(), // Faire en sorte que l'image occupe tout l'espace disponible
+                                                        contentScale = ContentScale.Fit // Adapter l'image en grand sans la couper
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
