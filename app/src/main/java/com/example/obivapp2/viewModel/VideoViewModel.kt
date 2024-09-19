@@ -28,6 +28,12 @@ class VideoViewModel : ViewModel() {
 
     fun resetLinkVideo(){
         _videoUrl.value = null
+        _imageUrl.value = null
+        _videoUrlToShare.value = null
+    }
+
+    fun dataIsNull() : Boolean{
+        return _imageUrl.value == null
     }
 
     // reçoit l'url en paramètre et va récuperer la page html.

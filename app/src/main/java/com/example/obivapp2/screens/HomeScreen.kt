@@ -2,6 +2,8 @@ package com.example.obivapp2.screens
 
 import MainViewModel
 import android.content.Context
+import android.widget.ProgressBar
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -15,8 +17,11 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
@@ -74,6 +79,7 @@ fun HomeScreen(
                         shape = RoundedCornerShape(8.dp),
                         elevation = 4.dp,
                         modifier = Modifier
+                            .animateContentSize()
                             .padding(vertical = 4.dp)
                             .fillMaxWidth()
                             .clickable {
@@ -84,6 +90,7 @@ fun HomeScreen(
 //                                expandedItemIndex = currentIndex
 //                                videoViewModel.fetchLinkVideo(linkData.url)
 //                            }
+                                videoViewModel.resetLinkVideo()
                                 videoViewModel.fetchLinkVideo(linkData.url)
                                 expandedItemIndex =
                                     if (expandedItemIndex == currentIndex) null else currentIndex
@@ -101,41 +108,51 @@ fun HomeScreen(
 
                             // Afficher les boutons si l'élément est étendu
                             if (expandedItemIndex == currentIndex) {
-                                Row(
-                                    horizontalArrangement = Arrangement.SpaceEvenly,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Image(
-                                        painter = rememberAsyncImagePainter(imageUrl), // Remplacez par votre ressource d'image
-                                        contentDescription = "Votre image",
-                                        modifier = Modifier.size(100.dp) // Ajustez la taille selon vos besoins
+                                if (videoViewModel.dataIsNull()){
+                                    CircularProgressIndicator(
+                                        strokeWidth = 2.dp,
+                                        modifier = Modifier
+                                            .size(100.dp)
+                                            .align(Alignment.CenterHorizontally),
+                                        color = Color.Black
                                     )
-                                    IconButton(onClick = {
-                                        videoViewModel.videoUrlToShare.value?.let {
-                                            shareLink(
-                                                context,
-                                                it
+                                } else {
+                                    Row(
+                                        horizontalArrangement = Arrangement.SpaceEvenly,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Image(
+                                            painter = rememberAsyncImagePainter(imageUrl), // Remplacez par votre ressource d'image
+                                            contentDescription = "Votre image",
+                                            modifier = Modifier.size(100.dp), // Ajustez la taille selon vos besoins
+                                        )
+                                        IconButton(onClick = {
+                                            videoViewModel.videoUrlToShare.value?.let {
+                                                shareLink(
+                                                    context,
+                                                    it
+                                                )
+                                            }
+                                        }) {
+                                            Icon(
+                                                imageVector = Icons.Default.Share,
+                                                contentDescription = "Partager"
                                             )
                                         }
-                                    }) {
-                                        Icon(
-                                            imageVector = Icons.Default.Share,
-                                            contentDescription = "Partager"
-                                        )
-                                    }
-                                    IconButton(onClick = {
-                                        navController.navigate("video")
-                                    }) {
-                                        Icon(
-                                            imageVector = Icons.Default.PlayArrow,
-                                            contentDescription = "Ouvrir"
-                                        )
-                                    }
-                                    IconButton(onClick = { /* Télécharger la vidéo */ }) {
-                                        Icon(
-                                            imageVector = Icons.Default.ShoppingCart,
-                                            contentDescription = "Télécharger"
-                                        )
+                                        IconButton(onClick = {
+                                            navController.navigate("video")
+                                        }) {
+                                            Icon(
+                                                imageVector = Icons.Default.PlayArrow,
+                                                contentDescription = "Ouvrir"
+                                            )
+                                        }
+                                        IconButton(onClick = { /* Télécharger la vidéo */ }) {
+                                            Icon(
+                                                imageVector = Icons.Default.ShoppingCart,
+                                                contentDescription = "Télécharger"
+                                            )
+                                        }
                                     }
                                 }
                             }
