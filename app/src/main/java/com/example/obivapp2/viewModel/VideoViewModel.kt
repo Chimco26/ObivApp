@@ -31,7 +31,7 @@ class VideoViewModel : ViewModel() {
     }
 
     fun isDataNull() : Boolean{
-        return _imageUrl.value == null
+        return _videoUrl.value == null
     }
 
     // reçoit l'url en paramètre et va récuperer la page html.
@@ -43,8 +43,8 @@ class VideoViewModel : ViewModel() {
                     val responseBody = response.body()
                     if (responseBody != null) {
                         val htmlContent = responseBody.string()
-                        parseHtmlForVideoUrl(htmlContent)
                         extractJpgImage(htmlContent)
+                        parseHtmlForVideoUrl(htmlContent)
                     } else {
                         Log.e("FetchVideo", "Response body is null")
                     }
