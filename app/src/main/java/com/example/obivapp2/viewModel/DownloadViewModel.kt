@@ -1,80 +1,72 @@
 package com.example.obivapp2.viewModel
 
-import android.app.Application
-import android.net.Uri
-import android.util.Log
-import androidx.lifecycle.AndroidViewModel
+import android.content.Context
+import android.os.Environment
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.android.exoplayer2.DefaultRenderersFactory
-import com.google.android.exoplayer2.RenderersFactory
-import com.google.android.exoplayer2.database.ExoDatabaseProvider
-import com.google.android.exoplayer2.offline.*
-import com.google.android.exoplayer2.upstream.DefaultDataSource
-import com.google.android.exoplayer2.upstream.DefaultHttpDataSource
-import com.google.android.exoplayer2.upstream.cache.LeastRecentlyUsedCacheEvictor
-import com.google.android.exoplayer2.upstream.cache.SimpleCache
-import com.google.android.exoplayer2.util.Util
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import java.io.File
-import java.io.IOException
+import java.io.FileOutputStream
+import java.io.InputStream
 
-class DownloadViewModel(application: Application) : AndroidViewModel(application) {
-
-    private val downloadManager: DownloadManager
-    private val dataSourceFactory: DefaultDataSource.Factory
-    private val renderersFactory: RenderersFactory
-
-    init {
-        val downloadCache = getDownloadCache()
-        val databaseProvider = getDatabaseProvider()
-        val httpDataSourceFactory = DefaultHttpDataSource.Factory().apply {
-            setUserAgent(Util.getUserAgent(application, "yourApplicationName"))
-        }
-        dataSourceFactory = DefaultDataSource.Factory(application, httpDataSourceFactory)
-        renderersFactory = DefaultRenderersFactory(application)
-        downloadManager = DownloadManager(
-            application,
-            databaseProvider,
-            downloadCache,
-            httpDataSourceFactory
-        )
-    }
-
-    fun downloadHlsStream(url: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val downloadRequest = DownloadRequest.Builder(url, Uri.parse(url)).build()
-            val downloadHelper = DownloadHelper.forHls(
-                getApplication(),
-                Uri.parse(url),
-                dataSourceFactory,
-                renderersFactory
-            )
-            downloadHelper.prepare(object : DownloadHelper.Callback {
-                override fun onPrepared(helper: DownloadHelper) {
-                    // La préparation est terminée, ajoutez la demande de téléchargement
-                    downloadManager.addDownload(downloadRequest)
-                }
-                // Ajoutez les méthodes supplémentaires si nécessaires
-                override fun onPrepareError(helper: DownloadHelper, e: IOException) {
-                    Log.e("Download", "Preparation error: ${e.message}")
-                }
-            })
-        }
-    }
-
-    private fun getDownloadCache(): SimpleCache {
-        val downloadContentDirectory = File(
-            getApplication<Application>().getExternalFilesDir(null),
-            "downloads"
-        )
-        val evictor = LeastRecentlyUsedCacheEvictor(1024 * 1024 * 100) // 100 MB
-        return SimpleCache(downloadContentDirectory, evictor, getDatabaseProvider())
-    }
-
-    private fun getDatabaseProvider(): ExoDatabaseProvider {
-        return ExoDatabaseProvider(getApplication())
-    }
+sealed class DownloadState {
+    object Idle : DownloadState() // Aucun téléchargement lancé
+    object Downloading : DownloadState() // Téléchargement en cours
+    object Success : DownloadState() // Téléchargement terminé
+    data class Error(val message: String) : DownloadState() // Erreur pendant le téléchargement
 }
 
+
+class DownloadViewModel : ViewModel() {
+
+    private val client = OkHttpClient()
+
+    // Suivi de l'état du téléchargement
+    private val _downloadState = MutableStateFlow<DownloadState>(DownloadState.Idle)
+    val downloadState: StateFlow<DownloadState> = _downloadState
+
+    // Fonction pour télécharger les vidéos M3U8
+    fun downloadM3U8(m3u8Url: String, context: Context) {
+        val outputDir: File = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES)
+            ?: context.filesDir
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // Démarre le téléchargement (mettre à jour l'état)
+                _downloadState.value = DownloadState.Downloading
+
+                // Téléchargement du fichier M3U8
+                val request = Request.Builder().url(m3u8Url).build()
+                val response = client.newCall(request).execute()
+                val m3u8Body = response.body?.string() ?: throw Exception("Erreur : fichier M3U8 introuvable")
+
+                val segmentUrls = m3u8Body.lines().filter { it.endsWith(".ts") }
+                segmentUrls.forEachIndexed { index, segmentUrl ->
+                    val segmentRequest = Request.Builder().url(segmentUrl).build()
+                    val segmentResponse = client.newCall(segmentRequest).execute()
+
+                    val inputStream: InputStream? = segmentResponse.body?.byteStream()
+                    val outputFile = File(outputDir, "segment_$index.ts")
+
+                    inputStream?.use { input ->
+                        FileOutputStream(outputFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                }
+
+                // Téléchargement terminé avec succès
+                _downloadState.value = DownloadState.Success
+            } catch (e: Exception) {
+                // En cas d'erreur, on met à jour l'état avec un message d'erreur
+                _downloadState.value = DownloadState.Error(e.message ?: "Erreur inconnue")
+            }
+        }
+    }
+}
 

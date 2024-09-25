@@ -23,10 +23,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
 import com.example.obivapp2.utils.shareLink
+import com.example.obivapp2.viewModel.DownloadState
+import com.example.obivapp2.viewModel.DownloadViewModel
 import com.example.obivapp2.viewModel.VideoViewModel
+import java.io.File
 
 
 @Composable
@@ -41,6 +45,8 @@ fun HomeScreen(
     val context = LocalContext.current
     val imageUrl by videoViewModel.imageUrl
     var isDialogOpen by remember { mutableStateOf(false) }
+    val downloadViewModel: DownloadViewModel = viewModel()
+    val downloadState by downloadViewModel.downloadState.collectAsState()
 
 
 
@@ -82,13 +88,6 @@ fun HomeScreen(
                             .padding(vertical = 4.dp)
                             .fillMaxWidth()
                             .clickable {
-//                            if (expandedItemIndex == currentIndex){
-//                                expandedItemIndex = null
-//                                videoViewModel.resetLinkVideo()
-//                            } else{
-//                                expandedItemIndex = currentIndex
-//                                videoViewModel.fetchLinkVideo(linkData.url)
-//                            }
                                 videoViewModel.resetLinkVideo()
                                 videoViewModel.fetchLinkVideo(linkData.url)
                                 expandedItemIndex =
@@ -147,12 +146,38 @@ fun HomeScreen(
                                                 contentDescription = "Ouvrir"
                                             )
                                         }
-                                        IconButton(onClick = { /* Télécharger la vidéo */ }) {
-                                            Icon(
-                                                imageVector = Icons.Default.ShoppingCart,
-                                                contentDescription = "Télécharger"
-                                            )
+                                        when (downloadState) {
+                                            is DownloadState.Idle -> {
+                                                // Afficher le bouton pour démarrer le téléchargement si rien n'est en cours
+                                                IconButton(onClick = {
+                                                    videoViewModel.videoUrl.value?.let {
+                                                        downloadViewModel.downloadM3U8(
+                                                            it, context)
+                                                    }
+                                                }) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.ShoppingCart,
+                                                        contentDescription = "Télécharger"
+                                                    )
+                                                }
+                                            }
+                                            is DownloadState.Downloading -> {
+                                                // Afficher un indicateur de progression pendant le téléchargement
+                                                CircularProgressIndicator()
+                                                Spacer(modifier = Modifier.height(16.dp))
+                                                Text(text = "Téléchargement en cours...")
+                                            }
+                                            is DownloadState.Success -> {
+                                                // Afficher un message de succès quand le téléchargement est terminé
+                                                Text(text = "Téléchargement terminé avec succès !")
+                                            }
+                                            is DownloadState.Error -> {
+                                                // Afficher le message d'erreur si le téléchargement échoue
+                                                val errorMessage = (downloadState as DownloadState.Error).message
+                                                Text(text = "Erreur : $errorMessage")
+                                            }
                                         }
+
                                         if (isDialogOpen) {
                                             Dialog(
                                                 onDismissRequest = {
