@@ -15,6 +15,6 @@ interface ApiService {
     suspend fun getVideo(@Url url: String): Response<ResponseBody>
 
     @FormUrlEncoded
-    @POST("m4tbnbwawm88e0q/home/xxx")  // Complète l'URL ici
+    @POST("m4tbnbwawm88e0q/home/obivap")  // Complète l'URL ici
     fun searchMovie(@Field("searchword") searchword: String): Call<ResponseBody>
 }
