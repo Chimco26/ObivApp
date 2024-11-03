@@ -67,7 +67,7 @@ class VideoViewModel : ViewModel() {
         val iframes = document.select("iframe[src]")
         for (iframe in iframes) {
             val src = iframe.attr("src")
-            if (src.contains("cloudhousr")) {
+            if (src.contains("mayicloud")) {
                 _videoUrlToShare.value = src
                 val videoId = src.substringAfterLast("/")
                 fetchVideo(videoId)
