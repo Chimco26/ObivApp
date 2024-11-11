@@ -1,5 +1,7 @@
 package com.example.obivapp2.viewModel
 
+import ApiService
+import RetrofitInstance
 import android.util.Log
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
@@ -14,6 +16,9 @@ import retrofit2.HttpException
 import java.io.IOException
 import okhttp3.ResponseBody
 import retrofit2.Response
+import retrofit2.Retrofit
+import retrofit2.converter.scalars.ScalarsConverterFactory
+import java.net.URI
 
 
 class VideoViewModel : ViewModel() {
@@ -67,19 +72,28 @@ class VideoViewModel : ViewModel() {
         val iframes = document.select("iframe[src]")
         for (iframe in iframes) {
             val src = iframe.attr("src")
-            if (src.contains("mayicloud")) {
+//            if (src.contains("tromcloud")) {
+//            }
                 _videoUrlToShare.value = src
                 val videoId = src.substringAfterLast("/")
-                fetchVideo(videoId)
-            }
+                val newHost = extractHostFromUrl(src)
+                fetchVideo(videoId, newHost)
         }
     }
 
     // reçoit l'url du lien vers la plateforme et charge la page puis envoit toute la page à une autre fonction.
-    private suspend fun fetchVideo(url: String) {
+    private suspend fun fetchVideo(url: String, newHost: String) {
         withContext(Dispatchers.IO) {
             try {
-                val response: Response<ResponseBody> = RetrofitInstance.apiCld.getVideo(url)
+                val myApiCldTest: ApiService by lazy {
+                    Retrofit.Builder()
+                        .baseUrl(newHost)
+                        .addConverterFactory(ScalarsConverterFactory.create())
+                        .build()
+                        .create(ApiService::class.java)
+                }
+                val response: Response<ResponseBody> = myApiCldTest.getVideo(url)
+//                val response: Response<ResponseBody> = RetrofitInstance.apiCld.getVideo(url)
                 if (response.isSuccessful) {
                     val responseBody = response.body()
                     if (responseBody != null) {
@@ -135,6 +149,16 @@ class VideoViewModel : ViewModel() {
             }
         }
         return null // Si aucune image en .jpg n'est trouvée, retourne null
+    }
+
+    private fun extractHostFromUrl(url: String): String {
+        return try {
+            val uri = URI(url)
+            val hostWithScheme = "${uri.scheme}://${uri.host}" // Construit l'hôte complet avec le schéma
+            "$hostWithScheme/iframe/" // Ajoute "/iframe/" à la fin
+        } catch (e: Exception) {
+            "" // En cas d'erreur, retourne une chaîne vide
+        }
     }
 
 }
