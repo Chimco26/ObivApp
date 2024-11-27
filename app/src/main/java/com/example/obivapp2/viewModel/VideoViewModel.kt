@@ -24,9 +24,11 @@ import java.net.URI
 class VideoViewModel : ViewModel() {
     private val _videoUrl = mutableStateOf<String?>(null)
     private val _imageUrl = mutableStateOf<String?>(null)
+    private val _description = mutableStateOf<String?>(null)
     private val _videoUrlToShare = mutableStateOf<String?>(null)
     val videoUrl: State<String?> get() = _videoUrl
     val imageUrl: State<String?> get() = _imageUrl
+    val description: State<String?> get() = _description
     val videoUrlToShare: State<String?> get() = _videoUrlToShare
 
     fun resetLinkVideo(){
@@ -50,6 +52,7 @@ class VideoViewModel : ViewModel() {
                         val htmlContent = responseBody.string()
                         extractJpgImage(htmlContent)
                         parseHtmlForVideoUrl(htmlContent)
+                        extractCanevasText(htmlContent)
                     } else {
                         Log.e("FetchVideo", "Response body is null")
                     }
@@ -160,5 +163,23 @@ class VideoViewModel : ViewModel() {
             "" // En cas d'erreur, retourne une chaîne vide
         }
     }
+
+    private fun extractCanevasText(htmlContent: String): String? {
+        val document: Document = Jsoup.parse(htmlContent)
+
+        // Trouver l'élément contenant le titre "CANEVAS DU FILM"
+        val canevasHeader = document.select("b i b:contains(CANEVAS DU FILM)").first()
+
+        if (canevasHeader != null) {
+            // Naviguer pour trouver le paragraphe suivant
+            val canevasParagraph = canevasHeader.parents().firstOrNull { it.tagName() == "p" }
+                ?.nextElementSibling()
+
+            // Extraire le texte du paragraphe s'il existe
+            _description.value = canevasParagraph?.text()
+        }
+        return null // Si le texte n'est pas trouvé
+    }
+
 
 }
