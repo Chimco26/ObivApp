@@ -87,4 +87,6 @@ dependencies {
     implementation ("androidx.compose.material:material:1.3.5")
     implementation ("androidx.compose.ui:ui-tooling:1.3.5")
     implementation ("io.coil-kt:coil-compose:2.0.0")
+    implementation ("androidx.room:room-runtime:2.5.0")
+    annotationProcessor ("androidx.room:room-compiler:2.5.0")
 }
