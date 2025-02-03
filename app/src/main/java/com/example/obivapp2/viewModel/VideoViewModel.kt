@@ -35,10 +35,11 @@ class VideoViewModel : ViewModel() {
         _videoUrl.value = null
         _imageUrl.value = null
         _videoUrlToShare.value = null
+        _description.value = null
     }
 
     fun isDataNull() : Boolean{
-        return _videoUrl.value == null
+        return (_videoUrl.value == null) || (_imageUrl.value == null) || (_description.value == null) || (_videoUrlToShare.value == null)
     }
 
     // reçoit l'url en paramètre et va récuperer la page html.

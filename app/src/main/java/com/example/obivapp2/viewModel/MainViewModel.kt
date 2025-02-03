@@ -31,7 +31,7 @@ class MainViewModel : ViewModel() {
         // Filtrer les liens contenant "b" juste avant "/obivap"
         val linksList = document.select("a[href]").mapNotNull {
             val url = it.attr("href")
-            if (url.contains("b/obivap")) { // Vérifie la condition
+            if (url.contains("b/niztal")) { // Vérifie la condition
                 LinkData(text = it.text(), url = url)
             } else {
                 null // Ignorer les liens qui ne correspondent pas
