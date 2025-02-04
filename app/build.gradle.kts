@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.jetbrains.kotlin.android)
+    id("kotlin-kapt")
 }
 
 android {
@@ -89,4 +90,7 @@ dependencies {
     implementation ("io.coil-kt:coil-compose:2.0.0")
     implementation ("androidx.room:room-runtime:2.5.0")
     annotationProcessor ("androidx.room:room-compiler:2.5.0")
+    implementation(libs.room.runtime) // Ajoute Room Runtime
+    implementation(libs.room.ktx) // Ajoute Room KTX
+    kapt(libs.room.compiler)
 }

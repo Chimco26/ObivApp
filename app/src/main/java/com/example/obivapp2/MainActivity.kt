@@ -1,9 +1,9 @@
 package com.example.obivapp2
 
-import MainViewModel
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -13,13 +13,21 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.obivapp2.database.LinkDatabase
 import com.example.obivapp2.screens.HomeScreen
 import com.example.obivapp2.screens.VideoScreen
 import com.example.obivapp2.viewModel.DownloadViewModel
+import com.example.obivapp2.viewModel.MainViewModel
+import com.example.obivapp2.viewModel.MainViewModelFactory
 import com.example.obivapp2.viewModel.VideoViewModel
 
 class MainActivity : ComponentActivity() {
-    private val mainViewModel: MainViewModel by lazy { MainViewModel() } // Assume a ViewModelProvider setup
+
+    private val mainViewModel: MainViewModel by viewModels {
+        val database = LinkDatabase.getDatabase(application)
+        val dao = database.linkDao()
+        MainViewModelFactory(dao)
+    }// Assume a ViewModelProvider setup
     private val videoViewModel: VideoViewModel by lazy { VideoViewModel() }
 
     override fun onCreate(savedInstanceState: Bundle?) {

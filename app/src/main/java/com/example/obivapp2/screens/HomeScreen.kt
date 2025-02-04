@@ -1,6 +1,5 @@
 package com.example.obivapp2.screens
 
-import MainViewModel
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -29,6 +28,7 @@ import coil.compose.rememberAsyncImagePainter
 import com.example.obivapp2.utils.shareLink
 import com.example.obivapp2.viewModel.DownloadState
 import com.example.obivapp2.viewModel.DownloadViewModel
+import com.example.obivapp2.viewModel.MainViewModel
 import com.example.obivapp2.viewModel.VideoViewModel
 import java.io.File
 

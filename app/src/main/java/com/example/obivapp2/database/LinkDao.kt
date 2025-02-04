@@ -4,16 +4,16 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
-import com.example.obivapp2.viewModel.LinkData
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface LinkDao {
-
-    // Insère un lien, ignore les doublons
-    @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insert(link: LinkData)
-
-    // Récupère tous les liens depuis la base de données
     @Query("SELECT * FROM links")
-    suspend fun getAllLinks(): List<LinkData>
+    fun getAllLinks(): Flow<List<LinkData>> // Utilisation de Flow pour l'observer en direct
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(link: LinkData) // La fonction doit être `suspend` pour Room
+
+//    @Query("DELETE FROM links WHERE url = :url")
+//    suspend fun deleteByUrl(url: String): Int// Supprime un lien par URL
 }
