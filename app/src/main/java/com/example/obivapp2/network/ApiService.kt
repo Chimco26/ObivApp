@@ -8,13 +8,13 @@ import retrofit2.http.FormUrlEncoded
 import retrofit2.http.POST
 
 interface ApiService {
-    @GET("w2qv15lvgqnb/home/udriz")
+    @GET("xzlh9iedc7yp/home/limpaz")
     suspend fun getHtmlPage(): String
 
     @GET
     suspend fun getVideo(@Url url: String): Response<ResponseBody>
 
     @FormUrlEncoded
-    @POST("w2qv15lvgqnb/home/udriz")  // Complète l'URL ici
+    @POST("xzlh9iedc7yp/home/limpaz")  // Complète l'URL ici
     fun searchMovie(@Field("searchword") searchword: String): Call<ResponseBody>
 }

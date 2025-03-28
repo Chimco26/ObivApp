@@ -32,7 +32,7 @@ class MainViewModel : ViewModel() {
         val linksList = document.select("a[href]").mapNotNull {
             val url = it.attr("href")
             val parentDiv = it.closest("div")
-            if (url.contains("b/udriz") && parentDiv != null && parentDiv.select(".trend_info").isEmpty()) {
+            if (url.contains("b/limpaz") && parentDiv != null && parentDiv.select(".trend_info").isEmpty()) {
                 LinkData(text = it.text(), url = url)
             } else {
                 null // Ignorer les liens qui ne correspondent pas

@@ -4,7 +4,7 @@ import retrofit2.converter.scalars.ScalarsConverterFactory
 object RetrofitInstance {
     val api: ApiService by lazy {
         Retrofit.Builder()
-            .baseUrl("https://udriz.com/")
+            .baseUrl("https://limpaz.com/")
             .addConverterFactory(ScalarsConverterFactory.create())
             .build()
             .create(ApiService::class.java)
