@@ -42,11 +42,11 @@ class MainViewModel : ViewModel() {
     private fun prepareList(html: String) {
         val document = Jsoup.parse(html)
 
-        // Filtrer les liens contenant "b" juste avant "/trokap"
+        // Filtrer les liens contenant "b" juste avant "/grastream"
         val linksList = document.select("a[href]").mapNotNull {
             val url = it.attr("href")
             val parentDiv = it.closest("div")
-            if (url.contains("b/trokap") && parentDiv != null && parentDiv.select(".trend_info").isEmpty()) {
+            if (url.contains("b/grastream") && parentDiv != null && parentDiv.select(".trend_info").isEmpty()) {
                 LinkData(text = it.text(), url = url)
             } else {
                 null // Ignorer les liens qui ne correspondent pas

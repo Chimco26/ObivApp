@@ -30,7 +30,7 @@ object RetrofitInstance {
                 .header("Sec-Ch-Ua", "\"Google Chrome\";v=\"137\", \"Chromium\";v=\"137\", \"Not/A)Brand\";v=\"24\"")
                 .header("Sec-Ch-Ua-Mobile", "?0")
                 .header("Sec-Ch-Ua-Platform", "\"Windows\"")
-                .header("Referer", "https://trokap.com/")
+                .header("Referer", "https://grastream.com/")
                 .header("Cookie", "g=true")
                 .build()
             chain.proceed(request)
@@ -40,7 +40,7 @@ object RetrofitInstance {
 
     private val retrofit by lazy {
         Retrofit.Builder()
-            .baseUrl("https://trokap.com/") // requis mais ignoré si tu utilises @Url
+            .baseUrl("https://grastream.com/") // requis mais ignoré si tu utilises @Url
             .client(client)
             .addConverterFactory(ScalarsConverterFactory.create())
             .build()

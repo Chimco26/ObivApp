@@ -12,7 +12,7 @@ import retrofit2.Response
 interface ApiService {
 
     // 1. Récupère la page HTML principale (accueil)
-    @GET("j5f9d3qwgkp/home/trokap")
+    @GET("legxz0tbv/home/grastream")
     suspend fun getHtmlPage(): Response<ResponseBody>
 
     // 2. Récupère dynamiquement n'importe quelle page vidéo via URL
@@ -21,6 +21,6 @@ interface ApiService {
 
     // 3. Effectue une recherche via le formulaire de la page (si applicable)
     @FormUrlEncoded
-    @POST("j5f9d3qwgkp/home/trokap")
+    @POST("legxz0tbv/home/grastream")
     fun searchMovie(@Field("searchword") searchword: String): Call<ResponseBody>
 }
