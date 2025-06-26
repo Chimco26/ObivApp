@@ -1,12 +1,12 @@
 package com.example.obivapp2.viewModel
 
-import ApiService
-import RetrofitInstance
 import android.util.Log
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.obivapp2.network.ApiService
+import com.example.obivapp2.network.RetrofitInstance
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
