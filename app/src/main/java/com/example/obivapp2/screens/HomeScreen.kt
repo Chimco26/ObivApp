@@ -48,10 +48,21 @@ fun HomeScreen(
     var isDialogOpen by remember { mutableStateOf(false) }
     val downloadViewModel: DownloadViewModel = viewModel()
     val downloadState by downloadViewModel.downloadState.collectAsState()
+    var isLoading by remember { mutableStateOf(true) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
-
-
-
+    // Add LaunchedEffect to fetch links when the screen starts
+    LaunchedEffect(Unit) {
+        try {
+            isLoading = true
+            errorMessage = null
+            mainViewModel.fetchLinks()
+        } catch (e: Exception) {
+            errorMessage = "Erreur lors du chargement: ${e.message}"
+        } finally {
+            isLoading = false
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -75,156 +86,194 @@ fun HomeScreen(
                     .fillMaxWidth()
                     .padding(8.dp)
             )
-            LazyColumn(
-                contentPadding = paddingValues,
-                modifier = Modifier.padding(8.dp)
-            ) {
-                items(links) { linkData ->
-                    val currentIndex = links.indexOf(linkData)
-                    Card(
-                        shape = RoundedCornerShape(8.dp),
-                        elevation = 4.dp,
-                        modifier = Modifier
-                            .animateContentSize()
-                            .padding(vertical = 4.dp)
-                            .fillMaxWidth()
-                            .clickable {
-                                videoViewModel.resetLinkVideo()
-                                videoViewModel.fetchLinkVideo(linkData.url)
-                                expandedItemIndex =
-                                    if (expandedItemIndex == currentIndex) null else currentIndex
-                            }
+
+            // Afficher le chargement ou l'erreur
+            when {
+                isLoading -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Column(
-                            modifier = Modifier
-                                .padding(16.dp)
-                                .background(Color.White)
-                        ) {
-                            Text(
-                                text = linkData.text,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
-
-                            // Afficher les boutons si l'élément est étendu
-                            if (expandedItemIndex == currentIndex) {
-                                if (videoViewModel.isDataNull()) {
-                                    CircularProgressIndicator(
-                                        strokeWidth = 2.dp,
-                                        modifier = Modifier
-                                            .size(100.dp)
-                                            .align(Alignment.CenterHorizontally),
-                                        color = Color.Black
+                        CircularProgressIndicator()
+                    }
+                }
+                errorMessage != null -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = errorMessage ?: "",
+                            color = Color.Red,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
+                }
+                links.isEmpty() -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Aucun résultat trouvé",
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
+                }
+                else -> {
+                    // Liste existante
+                    LazyColumn(
+                        contentPadding = paddingValues,
+                        modifier = Modifier.padding(8.dp)
+                    ) {
+                        items(links) { linkData ->
+                            val currentIndex = links.indexOf(linkData)
+                            Card(
+                                shape = RoundedCornerShape(8.dp),
+                                elevation = 4.dp,
+                                modifier = Modifier
+                                    .animateContentSize()
+                                    .padding(vertical = 4.dp)
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        videoViewModel.resetLinkVideo()
+                                        videoViewModel.fetchLinkVideo(linkData.url)
+                                        expandedItemIndex =
+                                            if (expandedItemIndex == currentIndex) null else currentIndex
+                                    }
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .padding(16.dp)
+                                        .background(Color.White)
+                                ) {
+                                    Text(
+                                        text = linkData.text,
+                                        modifier = Modifier.padding(bottom = 8.dp)
                                     )
-                                } else {
-                                    Row(
-                                        horizontalArrangement = Arrangement.SpaceEvenly,
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Image(
-                                            painter = rememberAsyncImagePainter(imageUrl), // Remplacez par votre ressource d'image
-                                            contentDescription = "Votre image",
-                                            modifier = Modifier
-                                                .size(100.dp)
-                                                .clickable { isDialogOpen = true },
-                                        )
-                                        Column {
 
-                                            Row {
+                                    // Afficher les boutons si l'élément est étendu
+                                    if (expandedItemIndex == currentIndex) {
+                                        if (videoViewModel.isDataNull()) {
+                                            CircularProgressIndicator(
+                                                strokeWidth = 2.dp,
+                                                modifier = Modifier
+                                                    .size(100.dp)
+                                                    .align(Alignment.CenterHorizontally),
+                                                color = Color.Black
+                                            )
+                                        } else {
+                                            Row(
+                                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Image(
+                                                    painter = rememberAsyncImagePainter(imageUrl), // Remplacez par votre ressource d'image
+                                                    contentDescription = "Votre image",
+                                                    modifier = Modifier
+                                                        .size(100.dp)
+                                                        .clickable { isDialogOpen = true },
+                                                )
+                                                Column {
 
-                                                IconButton(onClick = {
-                                                    videoViewModel.videoUrlToShare.value?.let {
-                                                        shareLink(
-                                                            context,
-                                                            it
-                                                        )
-                                                    }
-                                                }) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Share,
-                                                        contentDescription = "Partager"
-                                                    )
-                                                }
-                                                IconButton(onClick = {
-                                                    navController.navigate("video")
-                                                }) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.PlayArrow,
-                                                        contentDescription = "Ouvrir"
-                                                    )
-                                                }
-                                                when (downloadState) {
-                                                    is DownloadState.Idle -> {
-                                                        // Afficher le bouton pour démarrer le téléchargement si rien n'est en cours
+                                                    Row {
+
                                                         IconButton(onClick = {
-                                                            videoViewModel.videoUrl.value?.let {
-                                                                downloadViewModel.downloadM3U8(
-                                                                    it, context
+                                                            videoViewModel.videoUrlToShare.value?.let {
+                                                                shareLink(
+                                                                    context,
+                                                                    it
                                                                 )
                                                             }
                                                         }) {
                                                             Icon(
-                                                                imageVector = Icons.Default.ShoppingCart,
-                                                                contentDescription = "Télécharger"
+                                                                imageVector = Icons.Default.Share,
+                                                                contentDescription = "Partager"
                                                             )
                                                         }
-                                                    }
-
-                                                    is DownloadState.Downloading -> {
-                                                        // Afficher un indicateur de progression pendant le téléchargement
-                                                        CircularProgressIndicator()
-                                                        Spacer(modifier = Modifier.height(16.dp))
-                                                        Text(text = "Téléchargement en cours...")
-                                                    }
-
-                                                    is DownloadState.Success -> {
-                                                        // Afficher un message de succès quand le téléchargement est terminé
-                                                        Text(text = "Téléchargement terminé avec succès !")
-                                                    }
-
-                                                    is DownloadState.Error -> {
-                                                        // Afficher le message d'erreur si le téléchargement échoue
-                                                        val errorMessage =
-                                                            (downloadState as DownloadState.Error).message
-                                                        Text(text = "Erreur : $errorMessage")
-                                                    }
-                                                }
-
-                                                if (isDialogOpen) {
-                                                    Dialog(
-                                                        onDismissRequest = {
-                                                            // Fermer le Dialog lorsque l'utilisateur clique en dehors
-                                                            isDialogOpen = false
-                                                        },
-                                                        properties = DialogProperties(
-                                                            usePlatformDefaultWidth = false
-                                                        ) // Pour que l'image prenne tout l'écran si nécessaire
-                                                    ) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .fillMaxSize() // Le Box prend tout l'écran pour afficher l'image en grand
-                                                                .clickable {
-                                                                    // Fermer le Dialog lorsque l'image agrandie est cliquée
-                                                                    isDialogOpen = false
+                                                        IconButton(onClick = {
+                                                            navController.navigate("video")
+                                                        }) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.PlayArrow,
+                                                                contentDescription = "Ouvrir"
+                                                            )
+                                                        }
+                                                        when (downloadState) {
+                                                            is DownloadState.Idle -> {
+                                                                // Afficher le bouton pour démarrer le téléchargement si rien n'est en cours
+                                                                IconButton(onClick = {
+                                                                    videoViewModel.videoUrl.value?.let {
+                                                                        downloadViewModel.downloadM3U8(
+                                                                            it, context
+                                                                        )
+                                                                    }
+                                                                }) {
+                                                                    Icon(
+                                                                        imageVector = Icons.Default.ShoppingCart,
+                                                                        contentDescription = "Télécharger"
+                                                                    )
                                                                 }
-                                                        ) {
-                                                            Image(
-                                                                painter = rememberAsyncImagePainter(
-                                                                    imageUrl
-                                                                ),
-                                                                contentDescription = "Image agrandie",
-                                                                modifier = Modifier
-                                                                    .align(Alignment.Center) // Centrer l'image dans le Dialog
-                                                                    .fillMaxSize(), // Faire en sorte que l'image occupe tout l'espace disponible
-                                                                contentScale = ContentScale.Fit // Adapter l'image en grand sans la couper
-                                                            )
+                                                            }
+
+                                                            is DownloadState.Downloading -> {
+                                                                // Afficher un indicateur de progression pendant le téléchargement
+                                                                CircularProgressIndicator()
+                                                                Spacer(modifier = Modifier.height(16.dp))
+                                                                Text(text = "Téléchargement en cours...")
+                                                            }
+
+                                                            is DownloadState.Success -> {
+                                                                // Afficher un message de succès quand le téléchargement est terminé
+                                                                Text(text = "Téléchargement terminé avec succès !")
+                                                            }
+
+                                                            is DownloadState.Error -> {
+                                                                // Afficher le message d'erreur si le téléchargement échoue
+                                                                val errorMessage =
+                                                                    (downloadState as DownloadState.Error).message
+                                                                Text(text = "Erreur : $errorMessage")
+                                                            }
+                                                        }
+
+                                                        if (isDialogOpen) {
+                                                            Dialog(
+                                                                onDismissRequest = {
+                                                                    // Fermer le Dialog lorsque l'utilisateur clique en dehors
+                                                                    isDialogOpen = false
+                                                                },
+                                                                properties = DialogProperties(
+                                                                    usePlatformDefaultWidth = false
+                                                                ) // Pour que l'image prenne tout l'écran si nécessaire
+                                                            ) {
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .fillMaxSize() // Le Box prend tout l'écran pour afficher l'image en grand
+                                                                        .clickable {
+                                                                            // Fermer le Dialog lorsque l'image agrandie est cliquée
+                                                                            isDialogOpen = false
+                                                                        }
+                                                                ) {
+                                                                    Image(
+                                                                        painter = rememberAsyncImagePainter(
+                                                                            imageUrl
+                                                                        ),
+                                                                        contentDescription = "Image agrandie",
+                                                                        modifier = Modifier
+                                                                            .align(Alignment.Center) // Centrer l'image dans le Dialog
+                                                                            .fillMaxSize(), // Faire en sorte que l'image occupe tout l'espace disponible
+                                                                        contentScale = ContentScale.Fit // Adapter l'image en grand sans la couper
+                                                                    )
+                                                                }
+                                                            }
                                                         }
                                                     }
+                                                    description?.let { Text(
+                                                        text = it,
+                                                        style = MaterialTheme.typography.body1,
+                                                        modifier = Modifier.fillMaxWidth()) }
                                                 }
                                             }
-                                            description?.let { Text(
-                                                text = it,
-                                                style = MaterialTheme.typography.body1,
-                                                modifier = Modifier.fillMaxWidth()) }
                                         }
                                     }
                                 }

@@ -1,6 +1,7 @@
 package com.example.obivapp2.screens
 
 import android.app.Activity
+import android.util.Log
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.net.Uri
@@ -17,6 +18,8 @@ import com.example.obivapp2.viewModel.VideoViewModel
 import com.google.android.exoplayer2.ExoPlayer
 import com.google.android.exoplayer2.MediaItem
 import com.google.android.exoplayer2.ui.PlayerView
+import com.google.android.exoplayer2.Player
+import com.google.android.exoplayer2.PlaybackException
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fullscreen
@@ -51,23 +54,77 @@ fun VideoScreen(
 
     DisposableEffect(videoUrl) {
         videoUrl?.let { url ->
+            Log.d("VideoScreen", "=== INITIALISATION LECTEUR ===")
+            Log.d("VideoScreen", "URL vidéo reçue: $url")
+            
             val player = ExoPlayer.Builder(context).build().apply {
-                val dataSourceFactory = DefaultHttpDataSource.Factory()
+                // Ajouter un listener pour les erreurs
+                addListener(object : Player.Listener {
+                    override fun onPlayerError(error: PlaybackException) {
+                        Log.e("VideoScreen", "🔴 ERREUR LECTURE: ${error.message}")
+                        Log.e("VideoScreen", "Type d'erreur: ${error.errorCode}")
+                        Log.e("VideoScreen", "Cause: ${error.cause}")
+                    }
+                    
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        when (playbackState) {
+                            Player.STATE_IDLE -> Log.d("VideoScreen", "État: IDLE")
+                            Player.STATE_BUFFERING -> Log.d("VideoScreen", "État: BUFFERING")
+                            Player.STATE_READY -> Log.d("VideoScreen", "✅ État: READY - Vidéo prête!")
+                            Player.STATE_ENDED -> Log.d("VideoScreen", "État: ENDED")
+                        }
+                    }
+                })
+
+                val dataSourceFactory = DefaultHttpDataSource.Factory().apply {
+                    setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36")
+                    setAllowCrossProtocolRedirects(true)
+                    
+                    // Extraire le domaine de l'URL M3U8 pour le referer
+                    val uri = Uri.parse(url)
+                    val baseUrl = "${uri.scheme}://${uri.host}"
+                    
+                    Log.d("VideoScreen", "Domaine extrait pour referer: $baseUrl")
+                    
+                    // En-têtes complets pour éviter l'erreur 403
+                    val headers = mapOf(
+                        "Accept" to "*/*",
+                        "Accept-Encoding" to "identity",
+                        "Accept-Language" to "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+                        "Cache-Control" to "no-cache",
+                        "Connection" to "keep-alive",
+                        "Referer" to baseUrl,
+                        "Origin" to baseUrl,
+                        "Sec-Fetch-Site" to "same-origin",
+                        "Sec-Fetch-Mode" to "cors",
+                        "Sec-Fetch-Dest" to "empty",
+                        "Sec-Ch-Ua" to "\"Google Chrome\";v=\"137\", \"Chromium\";v=\"137\", \"Not/A)Brand\";v=\"24\"",
+                        "Sec-Ch-Ua-Mobile" to "?0",
+                        "Sec-Ch-Ua-Platform" to "\"Windows\""
+                    )
+                    setDefaultRequestProperties(headers)
+                }
+                
                 val mediaSource = HlsMediaSource.Factory(dataSourceFactory)
                     .createMediaSource(MediaItem.fromUri(Uri.parse(url)))
 
+                Log.d("VideoScreen", "MediaSource créé avec HLS")
                 setMediaSource(mediaSource)
                 prepare()
                 play()
+                Log.d("VideoScreen", "Lecteur configuré et lecture lancée")
             }
 
             exoPlayer = player
 
             onDispose {
+                Log.d("VideoScreen", "Libération du lecteur")
                 player.release()
                 exoPlayer = null
             }
-        } ?: onDispose { }
+        } ?: onDispose { 
+            Log.d("VideoScreen", "Aucune URL vidéo disponible")
+        }
 
         onDispose { }
     }

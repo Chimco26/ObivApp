@@ -89,6 +89,10 @@ class VideoViewModel : ViewModel() {
     private suspend fun fetchVideo(url: String, newHost: String) {
         withContext(Dispatchers.IO) {
             try {
+                Log.d("VideoViewModel", "=== FETCH VIDEO ===")
+                Log.d("VideoViewModel", "URL: $url")
+                Log.d("VideoViewModel", "Host: $newHost")
+                
                 val myApiCldTest: ApiService by lazy {
                     Retrofit.Builder()
                         .baseUrl(newHost)
@@ -96,25 +100,32 @@ class VideoViewModel : ViewModel() {
                         .build()
                         .create(ApiService::class.java)
                 }
+                
+                Log.d("VideoViewModel", "Envoi requête à: $newHost$url")
                 val response: Response<ResponseBody> = myApiCldTest.getVideo(url)
-//                val response: Response<ResponseBody> = RetrofitInstance.apiCld.getVideo(url)
+                
+                Log.d("VideoViewModel", "Code réponse: ${response.code()}")
+                Log.d("VideoViewModel", "Message: ${response.message()}")
+                
                 if (response.isSuccessful) {
                     val responseBody = response.body()
                     if (responseBody != null) {
                         val htmlContent = responseBody.string()
+                        Log.d("VideoViewModel", "HTML reçu - Taille: ${htmlContent.length}")
+                        Log.d("VideoViewModel", "Premiers 300 caractères: ${htmlContent.take(300)}")
                         extractM3U8Link(htmlContent)
                     } else {
-                        Log.e("FetchVideo", "Response body is null")
+                        Log.e("VideoViewModel", "Response body is null")
                     }
                 } else {
-                    Log.e("FetchVideo", "HTTP error: ${response.code()} ${response.message()}")
+                    Log.e("VideoViewModel", "HTTP error: ${response.code()} ${response.message()}")
                 }
             } catch (e: HttpException) {
-                Log.e("FetchVideo", "HTTP error: ${e.code()} ${e.message()}")
+                Log.e("VideoViewModel", "HTTP error: ${e.code()} ${e.message()}")
             } catch (e: IOException) {
-                Log.e("FetchVideo", "Network error: ${e.message}")
+                Log.e("VideoViewModel", "Network error: ${e.message}", e)
             } catch (e: Exception) {
-                Log.e("FetchVideo", "Unknown error: ${e.message}")
+                Log.e("VideoViewModel", "Unknown error: ${e.message}", e)
             }
             return@withContext null
         }
@@ -122,21 +133,47 @@ class VideoViewModel : ViewModel() {
 
     // reçoit toute la page html de lecture de la video et retrouve le fichier m3u8 pour le renvoyer à l'utilisateur.
     private fun extractM3U8Link(htmlContent: String) {
+        Log.d("VideoViewModel", "=== DEBUT EXTRACTION M3U8 ===")
+        Log.d("VideoViewModel", "Taille HTML reçu: ${htmlContent.length}")
+        
         val document: Document = Jsoup.parse(htmlContent)
         val scriptElements = document.getElementsByTag("script")
+        
+        Log.d("VideoViewModel", "Nombre de scripts trouvés: ${scriptElements.size}")
 
-        for (element in scriptElements) {
+        for ((index, element) in scriptElements.withIndex()) {
             val scriptData = element.data()
+            Log.d("VideoViewModel", "Script $index - Taille: ${scriptData.length}")
+            
             val normalizedData = scriptData.replace("\\s".toRegex(), "")
             if (normalizedData.contains("file:\"")) {
+                Log.d("VideoViewModel", "Script $index contient 'file:\"'")
+                Log.d("VideoViewModel", "Contenu du script: ${scriptData.take(500)}...")
+                
                 val startIndex = normalizedData.indexOf("file:\"") + 6
                 val endIndex = normalizedData.indexOf("\"", startIndex)
                 if (startIndex != -1 && endIndex != -1) {
-                    Log.e("LOG PATH","aaa"+normalizedData.substring(startIndex, endIndex))
-                    _videoUrl.value = normalizedData.substring(startIndex, endIndex)
+                    val extractedUrl = normalizedData.substring(startIndex, endIndex)
+                    Log.d("VideoViewModel", "🎯 M3U8 TROUVE: $extractedUrl")
+                    
+                    // Test de l'URL M3U8
+                    viewModelScope.launch {
+                        testM3U8Url(extractedUrl)
+                    }
+                    
+                    _videoUrl.value = extractedUrl
+                    return
+                } else {
+                    Log.e("VideoViewModel", "Erreur parsing: startIndex=$startIndex, endIndex=$endIndex")
+                }
+            } else {
+                Log.d("VideoViewModel", "Script $index ne contient pas 'file:\"'")
+                if (scriptData.isNotEmpty()) {
+                    Log.d("VideoViewModel", "Premiers caractères: ${scriptData.take(100)}")
                 }
             }
         }
+        Log.e("VideoViewModel", "❌ AUCUN M3U8 TROUVE!")
     }
 
     private fun extractJpgImage(htmlContent: String): String? {
@@ -180,6 +217,33 @@ class VideoViewModel : ViewModel() {
             _description.value = canevasParagraph?.text()
         }
         return null // Si le texte n'est pas trouvé
+    }
+
+    private suspend fun testM3U8Url(url: String) {
+        withContext(Dispatchers.IO) {
+            try {
+                Log.d("VideoViewModel", "🔍 TEST M3U8: $url")
+                
+                val testRetrofit = Retrofit.Builder()
+                    .baseUrl("https://example.com/") // URL de base factice
+                    .addConverterFactory(ScalarsConverterFactory.create())
+                    .build()
+                    .create(ApiService::class.java)
+                
+                val response = testRetrofit.getVideo(url)
+                Log.d("VideoViewModel", "Réponse M3U8 - Code: ${response.code()}")
+                
+                if (response.isSuccessful) {
+                    val content = response.body()?.string()?.take(200) ?: ""
+                    Log.d("VideoViewModel", "✅ M3U8 accessible - Contenu: $content")
+                } else {
+                    Log.e("VideoViewModel", "❌ M3U8 inaccessible - ${response.code()}: ${response.message()}")
+                }
+                
+            } catch (e: Exception) {
+                Log.e("VideoViewModel", "❌ Erreur test M3U8: ${e.message}")
+            }
+        }
     }
 
 
