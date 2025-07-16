@@ -19,9 +19,13 @@ class MainViewModel : ViewModel() {
     private val _links = mutableStateOf<List<LinkData>>(emptyList())
     val links: State<List<LinkData>> get() = _links
 
+    private val _isLoading = mutableStateOf(false)
+    val isLoading: State<Boolean> get() = _isLoading
+
     fun fetchLinks() {
         viewModelScope.launch {
             try {
+                _isLoading.value = true
                 Log.d("MainViewModel", "Début de la requête API...")
                 val response = RetrofitInstance.api.getHtmlPage()
                 if (response.isSuccessful) {
@@ -35,6 +39,8 @@ class MainViewModel : ViewModel() {
             } catch (e: Exception) {
                 Log.e("MainViewModel", "Erreur lors de la requête API: ${e.message}", e)
                 e.printStackTrace()
+            } finally {
+                _isLoading.value = false
             }
         }
     }
@@ -92,12 +98,15 @@ class MainViewModel : ViewModel() {
     fun searchVideo(videoName: String){
         viewModelScope.launch {
             try {
+                _isLoading.value = true
                 val responseBody = RetrofitInstance.api.searchMovie(videoName).await()
                 responseBody?.string()?.let { html ->
                     prepareList(html)
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+            } finally {
+                _isLoading.value = false
             }
         }
     }
