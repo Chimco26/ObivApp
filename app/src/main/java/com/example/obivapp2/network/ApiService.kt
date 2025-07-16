@@ -8,11 +8,12 @@ import retrofit2.http.FormUrlEncoded
 import okhttp3.ResponseBody
 import retrofit2.Call
 import retrofit2.Response
+import com.example.obivapp2.utils.Constants
 
 interface ApiService {
 
     // 1. Récupère la page HTML principale (accueil)
-    @GET("yqrw4lbk8xi16nz/home/avobiv")
+    @GET(Constants.API_PATH)
     suspend fun getHtmlPage(): Response<ResponseBody>
 
     // 2. Récupère dynamiquement n'importe quelle page vidéo via URL
@@ -21,6 +22,6 @@ interface ApiService {
 
     // 3. Effectue une recherche via le formulaire de la page (si applicable)
     @FormUrlEncoded
-    @POST("yqrw4lbk8xi16nz/home/avobiv")
+    @POST(Constants.API_PATH)
     fun searchMovie(@Field("searchword") searchword: String): Call<ResponseBody>
 }

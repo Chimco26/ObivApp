@@ -16,6 +16,7 @@ import java.nio.charset.Charset
 import okio.GzipSource
 import okio.buffer
 import okio.source
+import com.example.obivapp2.utils.Constants
 
 object RetrofitInstance {
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
@@ -96,7 +97,7 @@ object RetrofitInstance {
 
     private val retrofit by lazy {
         Retrofit.Builder()
-            .baseUrl("https://avobiv.com/")
+            .baseUrl(Constants.BASE_URL)
             .client(client)
             .addConverterFactory(ScalarsConverterFactory.create())
             .build()
