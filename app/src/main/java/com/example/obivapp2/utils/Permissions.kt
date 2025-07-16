@@ -10,47 +10,67 @@ import androidx.core.content.ContextCompat
 
 object Permissions {
     private const val STORAGE_PERMISSION_CODE = 100
+    private const val NOTIFICATION_PERMISSION_CODE = 101
 
     fun hasStoragePermission(context: Context): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            true // Android 13+ utilise le Scoped Storage, pas besoin de permission explicite
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // Android 10-12
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.WRITE_EXTERNAL_STORAGE
-            ) == PackageManager.PERMISSION_GRANTED
+            true // Android 13+ utilise le MediaStore, pas besoin de permission
         } else {
-            // Android 9 et moins
             ContextCompat.checkSelfPermission(
                 context,
                 Manifest.permission.WRITE_EXTERNAL_STORAGE
-            ) == PackageManager.PERMISSION_GRANTED &&
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.READ_EXTERNAL_STORAGE
             ) == PackageManager.PERMISSION_GRANTED
         }
     }
 
-    fun requestStoragePermission(activity: Activity) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            return // Pas besoin de demander la permission sur Android 13+
-        }
-
-        val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+    fun hasNotificationPermission(context: Context): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
         } else {
-            arrayOf(
-                Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                Manifest.permission.READ_EXTERNAL_STORAGE
+            true // Avant Android 13, pas besoin de permission explicite
+        }
+    }
+
+    fun requestStoragePermission(activity: Activity) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            ActivityCompat.requestPermissions(
+                activity,
+                arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE),
+                STORAGE_PERMISSION_CODE
             )
         }
+    }
 
-        ActivityCompat.requestPermissions(
-            activity,
-            permissions,
-            STORAGE_PERMISSION_CODE
-        )
+    fun requestNotificationPermission(activity: Activity) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ActivityCompat.requestPermissions(
+                activity,
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                NOTIFICATION_PERMISSION_CODE
+            )
+        }
+    }
+
+    fun requestAllPermissions(activity: Activity) {
+        val permissions = mutableListOf<String>()
+        
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
+        if (permissions.isNotEmpty()) {
+            ActivityCompat.requestPermissions(
+                activity,
+                permissions.toTypedArray(),
+                STORAGE_PERMISSION_CODE
+            )
+        }
     }
 } 

@@ -14,7 +14,7 @@ import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.runtime.*
@@ -61,6 +61,11 @@ fun HomeScreen(
         try {
             errorMessage = null
             mainViewModel.fetchLinks()
+            
+            // Demander toutes les permissions nécessaires au démarrage
+            (context as? Activity)?.let {
+                Permissions.requestAllPermissions(it)
+            }
         } catch (e: Exception) {
             errorMessage = "Erreur lors du chargement: ${e.message}"
         }
@@ -221,7 +226,7 @@ fun HomeScreen(
                                                                         }
                                                                     }) {
                                                                         Icon(
-                                                                            imageVector = Icons.Default.ShoppingCart,
+                                                                            imageVector = Icons.Default.Download,
                                                                             contentDescription = "Télécharger"
                                                                         )
                                                                     }
