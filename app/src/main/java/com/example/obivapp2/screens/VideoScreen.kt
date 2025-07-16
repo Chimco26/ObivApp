@@ -5,9 +5,12 @@ import android.util.Log
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.net.Uri
+import android.view.View
+import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -22,19 +25,30 @@ import com.google.android.exoplayer2.Player
 import com.google.android.exoplayer2.PlaybackException
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Fullscreen
-import androidx.compose.material.icons.filled.FullscreenExit
-import androidx.compose.material.icons.filled.ScreenLockLandscape
-import androidx.compose.material.icons.filled.ScreenLockPortrait
+import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.example.obivapp2.viewModel.DownloadViewModel
 import com.google.android.exoplayer2.source.hls.HlsMediaSource
+import com.google.android.exoplayer2.ui.AspectRatioFrameLayout
+import com.google.android.exoplayer2.ui.StyledPlayerView
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource
-
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import android.view.GestureDetector
+import android.view.MotionEvent
+import android.view.View.OnTouchListener
+import androidx.core.view.GestureDetectorCompat
+import kotlinx.coroutines.Job
 
 @Composable
 fun isLandscape(): Boolean {
@@ -49,16 +63,49 @@ fun VideoScreen(
     downloadViewModel: DownloadViewModel
 ) {
     val videoUrl by viewModel.videoUrl
+    val videoTitle by viewModel.title
     val context = LocalContext.current
+    val activity = context as? Activity
+    val view = LocalView.current
+    val window = activity?.window
+    val scope = rememberCoroutineScope()
+    
     var exoPlayer: ExoPlayer? by remember { mutableStateOf(null) }
+    var isFullscreen by remember { mutableStateOf(false) }
+    var playerView: StyledPlayerView? by remember { mutableStateOf(null) }
+    var showControls by remember { mutableStateOf(true) }
+    var tapJob by remember { mutableStateOf<Job?>(null) }
+    var isWaitingForDoubleTap by remember { mutableStateOf(false) }
+
+    // Auto-masquage des contrôles
+    LaunchedEffect(showControls) {
+        if (showControls) {
+            delay(3000)
+            showControls = false
+            playerView?.hideController()
+        }
+    }
+
+    // Gestion du mode plein écran
+    LaunchedEffect(isFullscreen) {
+        window?.let { win ->
+            val windowInsetsController = WindowCompat.getInsetsController(win, view)
+            if (isFullscreen) {
+                windowInsetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                windowInsetsController.hide(WindowInsetsCompat.Type.systemBars())
+                activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            } else {
+                windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
+                activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            }
+        }
+    }
 
     DisposableEffect(videoUrl) {
         videoUrl?.let { url ->
             Log.d("VideoScreen", "=== INITIALISATION LECTEUR ===")
-            Log.d("VideoScreen", "URL vidéo reçue: $url")
             
             val player = ExoPlayer.Builder(context).build().apply {
-                // Ajouter un listener pour les erreurs
                 addListener(object : Player.Listener {
                     override fun onPlayerError(error: PlaybackException) {
                         Log.e("VideoScreen", "🔴 ERREUR LECTURE: ${error.message}")
@@ -80,13 +127,9 @@ fun VideoScreen(
                     setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36")
                     setAllowCrossProtocolRedirects(true)
                     
-                    // Extraire le domaine de l'URL M3U8 pour le referer
                     val uri = Uri.parse(url)
                     val baseUrl = "${uri.scheme}://${uri.host}"
                     
-                    Log.d("VideoScreen", "Domaine extrait pour referer: $baseUrl")
-                    
-                    // En-têtes complets pour éviter l'erreur 403
                     val headers = mapOf(
                         "Accept" to "*/*",
                         "Accept-Encoding" to "identity",
@@ -108,22 +151,17 @@ fun VideoScreen(
                 val mediaSource = HlsMediaSource.Factory(dataSourceFactory)
                     .createMediaSource(MediaItem.fromUri(Uri.parse(url)))
 
-                Log.d("VideoScreen", "MediaSource créé avec HLS")
                 setMediaSource(mediaSource)
                 prepare()
-                play()
-                Log.d("VideoScreen", "Lecteur configuré et lecture lancée")
+                playWhenReady = true
             }
 
             exoPlayer = player
 
             onDispose {
-                Log.d("VideoScreen", "Libération du lecteur")
                 player.release()
                 exoPlayer = null
             }
-        } ?: onDispose { 
-            Log.d("VideoScreen", "Aucune URL vidéo disponible")
         }
 
         onDispose { }
@@ -131,61 +169,153 @@ fun VideoScreen(
 
     Scaffold(
         topBar = {
-            if (!isLandscape()) {
-                TopAppBar(title = { Text("Video Screen") })
+            if (!isFullscreen) {
+                TopAppBar(
+                    title = { Text(videoTitle ?: "Video Screen") },
+                    actions = {
+                        IconButton(onClick = { isFullscreen = true }) {
+                            Icon(Icons.Default.Fullscreen, "Plein écran")
+                        }
+                    }
+                )
             }
         }
     ) { paddingValues ->
-
-       // Button(onClick = { videoUrl?.let { downloadViewModel.downloadHlsStream(it) } }) {
-         //   Text("Download HLS Stream")
-        //}
-        Column(
+        Box(
             modifier = Modifier
-                .padding(paddingValues)
                 .fillMaxSize()
+                .padding(if (!isFullscreen) paddingValues else PaddingValues(0.dp))
         ) {
+            // Lecteur vidéo
             exoPlayer?.let { player ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onDoubleTap = { offset ->
-                                    val screenWidth = size.width
-                                    val position = player.currentPosition
-                                    if (offset.x < screenWidth / 2) {
-                                        // Double tap on the left half
-                                        player.seekTo(position - 5000)
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { context ->
+                        StyledPlayerView(context).apply {
+                            this.player = player
+                            useController = true
+                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                            setShowNextButton(false)
+                            setShowPreviousButton(false)
+                            setShowFastForwardButton(false)
+                            setShowRewindButton(false)
+                            controllerHideOnTouch = false
+                            controllerAutoShow = false
+                            controllerShowTimeoutMs = 3000
+                            
+                            // Créer un détecteur de gestes personnalisé
+                            val gestureDetector = GestureDetectorCompat(context, object : GestureDetector.SimpleOnGestureListener() {
+                                override fun onDown(e: MotionEvent): Boolean {
+                                    isWaitingForDoubleTap = true
+                                    tapJob?.cancel()
+                                    tapJob = scope.launch {
+                                        delay(300) // Attendre pour voir si c'est un double tap
+                                        if (isWaitingForDoubleTap) {
+                                            // Si on arrive ici, c'était un simple tap
+                                            showControls = !showControls
+                                            if (showControls) {
+                                                playerView?.showController()
+                                            } else {
+                                                playerView?.hideController()
+                                            }
+                                            isWaitingForDoubleTap = false
+                                        }
+                                    }
+                                    return true
+                                }
+
+                                override fun onDoubleTap(e: MotionEvent): Boolean {
+                                    tapJob?.cancel()
+                                    isWaitingForDoubleTap = false
+                                    val screenWidth = width
+                                    if (e.x < screenWidth / 2) {
+                                        player.seekTo(player.currentPosition - 10000)
                                     } else {
-                                        // Double tap on the right half
-                                        player.seekTo(position + 10000)
+                                        player.seekTo(player.currentPosition + 10000)
+                                    }
+                                    return true
+                                }
+
+                                override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                                    return true // On ne fait rien ici car géré dans onDown
+                                }
+                            })
+
+                            // Configurer le gestionnaire de toucher
+                            setOnTouchListener { v, event ->
+                                when (event.action) {
+                                    MotionEvent.ACTION_DOWN -> {
+                                        v.performClick()
+                                    }
+                                    MotionEvent.ACTION_UP -> {
+                                        if (!isWaitingForDoubleTap) {
+                                            tapJob?.cancel()
+                                        }
                                     }
                                 }
-                            )
-                        }
-                ) {
-                    AndroidView(
-                        modifier = Modifier.fillMaxSize(),
-                        factory = { context ->
-                            PlayerView(context).apply {
-                                this.player = player
+                                gestureDetector.onTouchEvent(event)
+                                true
                             }
+
+                            // Désactiver les contrôles par défaut
+                            setOnClickListener(null)
+                            
+                            playerView = this
                         }
-                    )
-                    // 👇 Le bouton rotation dans un coin
-                    ToggleOrientationButton(
-                        // Aligné en bas à droite par exemple
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(16.dp)
-                    )
-                }
+                    },
+                    update = { view ->
+                        view.setFullscreenButtonClickListener { isFullScreenMode ->
+                            isFullscreen = isFullScreenMode
+                        }
+                    }
+                )
             } ?: run {
-                Text(text = "Loading video...", modifier = Modifier.padding(16.dp))
+                CircularProgressIndicator(
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
+
+            // Indicateurs de double tap
+            if (showControls) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 32.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        color = Color.Black.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.padding(8.dp)
+                    ) {
+                        Text(
+                            "-10s",
+                            color = Color.White,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+                    Surface(
+                        color = Color.Black.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.padding(8.dp)
+                    ) {
+                        Text(
+                            "+10s",
+                            color = Color.White,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+                }
             }
         }
-        BackHandler {
+    }
+
+    // Gestion du retour arrière
+    BackHandler {
+        if (isFullscreen) {
+            isFullscreen = false
+        } else {
             exoPlayer?.release()
             exoPlayer = null
             navController.popBackStack()

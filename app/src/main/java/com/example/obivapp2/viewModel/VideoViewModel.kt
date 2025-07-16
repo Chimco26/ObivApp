@@ -26,16 +26,19 @@ class VideoViewModel : ViewModel() {
     private val _imageUrl = mutableStateOf<String?>(null)
     private val _description = mutableStateOf<String?>(null)
     private val _videoUrlToShare = mutableStateOf<String?>(null)
+    private val _title = mutableStateOf<String?>(null)
     val videoUrl: State<String?> get() = _videoUrl
     val imageUrl: State<String?> get() = _imageUrl
     val description: State<String?> get() = _description
     val videoUrlToShare: State<String?> get() = _videoUrlToShare
+    val title: State<String?> get() = _title
 
     fun resetLinkVideo(){
         _videoUrl.value = null
         _imageUrl.value = null
         _videoUrlToShare.value = null
         _description.value = null
+        _title.value = null
     }
 
     fun isDataNull() : Boolean{
@@ -43,7 +46,8 @@ class VideoViewModel : ViewModel() {
     }
 
     // reçoit l'url en paramètre et va récuperer la page html.
-    fun fetchLinkVideo(url: String) {
+    fun fetchLinkVideo(url: String, title: String? = null) {
+        _title.value = title
         viewModelScope.launch {
             try {
                 val response: Response<ResponseBody> = RetrofitInstance.api.getVideo(url)
