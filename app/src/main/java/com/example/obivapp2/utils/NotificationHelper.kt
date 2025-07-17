@@ -42,18 +42,21 @@ class NotificationHelper(private val context: Context) {
         notificationId: Int,
         title: String,
         progress: Int,
-        currentSegment: Int,
-        totalSegments: Int,
-        downloadedSize: Long
+        downloadedSize: Long,
+        totalSize: Long,
+        isPaused: Boolean = false
     ) {
+        val downloadedMB = downloadedSize / (1024 * 1024)
+        val totalMB = totalSize / (1024 * 1024)
+        
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle(title)
-            .setContentText("Téléchargement en cours...")
+            .setContentText(if (isPaused) "En pause" else "Téléchargement en cours...")
             .setProgress(100, progress, false)
-            .setOngoing(true) // La notification ne peut pas être balayée
+            .setOngoing(!isPaused) // La notification peut être balayée si en pause
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setSubText("$currentSegment/$totalSegments - ${downloadedSize / (1024 * 1024)} Mo")
+            .setSubText("$downloadedMB Mo / $totalMB Mo")
 
         NotificationManagerCompat.from(context).notify(notificationId, builder.build())
     }

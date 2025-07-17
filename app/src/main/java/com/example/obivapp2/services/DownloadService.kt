@@ -57,12 +57,39 @@ class DownloadService : Service() {
     companion object {
         const val ACTION_START_DOWNLOAD = "com.example.obivapp2.action.START_DOWNLOAD"
         const val ACTION_CANCEL_DOWNLOAD = "com.example.obivapp2.action.CANCEL_DOWNLOAD"
+        const val ACTION_TOGGLE_PAUSE = "com.example.obivapp2.action.TOGGLE_PAUSE"
         const val EXTRA_URL = "extra_url"
         const val EXTRA_TITLE = "extra_title"
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "download_service_channel"
         private const val TEMP_FILE_SUFFIX = ".partial"
+        
+        // SharedFlow pour la communication avec le ViewModel
+        private val _downloadEvents = MutableStateFlow<DownloadEvent?>(null)
+        val downloadEvents: MutableStateFlow<DownloadEvent?> = _downloadEvents
     }
+
+    sealed class DownloadEvent {
+        data class Progress(
+            val url: String,
+            val progress: Int,
+            val downloadedSize: Long,
+            val totalSize: Long,
+            val isPaused: Boolean
+        ) : DownloadEvent()
+        
+        data class Complete(val url: String, val filePath: String) : DownloadEvent()
+        data class Error(val url: String, val errorMessage: String) : DownloadEvent()
+        data class Paused(val url: String) : DownloadEvent()
+        data class Resumed(val url: String) : DownloadEvent()
+        data class Cancelled(val url: String) : DownloadEvent()
+    }
+
+    private var isPaused = false
+    private var activeDownloads = mutableMapOf<String, Job>()
+    private var downloadSizes = mutableMapOf<String, Long>()
+    private var downloadProgress = mutableMapOf<String, Int>()
+    private var downloadedSizes = mutableMapOf<String, Long>()
 
     override fun onCreate() {
         super.onCreate()
@@ -107,21 +134,48 @@ class DownloadService : Service() {
             )
     }
 
+    private fun emitDownloadEvent(event: DownloadEvent) {
+        _downloadEvents.value = event
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START_DOWNLOAD -> {
                 val url = intent.getStringExtra(EXTRA_URL)
                 val title = intent.getStringExtra(EXTRA_TITLE)
                 
-                // Démarrer le service en premier plan
-                startForeground(NOTIFICATION_ID, createForegroundNotification(title).build())
-                
-                if (url != null) {
+                if (url != null && !activeDownloads.containsKey(url)) {
+                    // Démarrer le service en premier plan
+                    startForeground(NOTIFICATION_ID, createForegroundNotification(title).build())
                     startDownload(url, title)
                 }
             }
             ACTION_CANCEL_DOWNLOAD -> {
-                cancelDownload()
+                val url = intent.getStringExtra(EXTRA_URL)
+                if (url != null) {
+                    activeDownloads[url]?.cancel()
+                    activeDownloads.remove(url)
+                    downloadSizes.remove(url)
+                    downloadProgress.remove(url)
+                    downloadedSizes.remove(url)
+                    emitDownloadEvent(DownloadEvent.Cancelled(url))
+                }
+                if (activeDownloads.isEmpty()) {
+                    stopSelf()
+                }
+            }
+            ACTION_TOGGLE_PAUSE -> {
+                val url = intent.getStringExtra(EXTRA_URL)
+                if (url != null) {
+                    isPaused = !isPaused
+                    if (isPaused) {
+                        emitDownloadEvent(DownloadEvent.Paused(url))
+                    } else {
+                        emitDownloadEvent(DownloadEvent.Resumed(url))
+                    }
+                    // Mettre à jour la notification avec l'état de pause
+                    updateNotificationForPause(url)
+                }
             }
         }
         return START_NOT_STICKY
@@ -142,10 +196,41 @@ class DownloadService : Service() {
         }
     }
 
+    private suspend fun calculateTotalSize(segmentUrls: List<String>): Long {
+        var totalSize = 0L
+        for (url in segmentUrls) {
+            try {
+                val request = Request.Builder().url(url).head().build()
+                val response = client.newCall(request).execute()
+                if (response.isSuccessful) {
+                    totalSize += response.header("Content-Length")?.toLongOrNull() ?: 0L
+                }
+            } catch (e: Exception) {
+                Log.e("DownloadService", "Erreur lors du calcul de la taille pour $url", e)
+            }
+        }
+        return totalSize
+    }
+
+    private fun updateNotificationForPause(url: String) {
+        val downloadSize = downloadSizes[url] ?: 0L
+        val downloadedSize = downloadedSizes[url] ?: 0L
+        val progress = downloadProgress[url] ?: 0
+        
+        notificationHelper?.showDownloadProgressNotification(
+            notificationId = url.hashCode(),
+            title = "Téléchargement ${if (isPaused) "en pause" else "en cours"}",
+            progress = progress,
+            downloadedSize = downloadedSize,
+            totalSize = downloadSize,
+            isPaused = isPaused
+        )
+    }
+
     private fun startDownload(m3u8Url: String, videoTitle: String?) {
         val notificationId = m3u8Url.hashCode()
 
-        currentJob = serviceScope.launch {
+        val job = serviceScope.launch {
             try {
                 Log.d("DownloadService", "Début du téléchargement M3U8: $m3u8Url")
 
@@ -181,6 +266,10 @@ class DownloadService : Service() {
                     throw Exception("Aucun segment vidéo trouvé dans le fichier M3U8")
                 }
 
+                // Calculer la taille totale
+                val totalSize = calculateTotalSize(segmentUrls)
+                downloadSizes[m3u8Url] = totalSize
+
                 val dateFormat = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.getDefault())
                 val timestamp = dateFormat.format(Date())
                 val sanitizedTitle = videoTitle?.replace(Regex("[^a-zA-Z0-9.-]"), "_") ?: "video"
@@ -199,15 +288,32 @@ class DownloadService : Service() {
                         // Vérifier si le job a été annulé
                         ensureActive()
 
-                        val progress = ((index + 1) * 100) / segmentUrls.size
+                        // Gérer la pause
+                        while (isPaused) {
+                            delay(500)
+                            ensureActive()
+                        }
+
+                        val progress = if (totalSize > 0) {
+                            ((totalDownloadedSize * 100) / totalSize).toInt()
+                        } else {
+                            ((index + 1) * 100) / segmentUrls.size
+                        }
+
+                        // Mettre à jour les maps locales
+                        downloadProgress[m3u8Url] = progress
+                        downloadedSizes[m3u8Url] = totalDownloadedSize
+
+                        // Émettre l'événement de progression
+                        emitDownloadEvent(DownloadEvent.Progress(m3u8Url, progress, totalDownloadedSize, totalSize, isPaused))
 
                         notificationHelper?.showDownloadProgressNotification(
                             notificationId = notificationId,
                             title = sanitizedTitle,
                             progress = progress,
-                            currentSegment = index + 1,
-                            totalSegments = segmentUrls.size,
-                            downloadedSize = totalDownloadedSize
+                            downloadedSize = totalDownloadedSize,
+                            totalSize = totalSize,
+                            isPaused = isPaused
                         )
 
                         val segmentRequest = Request.Builder()
@@ -225,6 +331,13 @@ class DownloadService : Service() {
                             var bytes = input.read(buffer)
                             while (bytes >= 0) {
                                 ensureActive() // Vérifier l'annulation pendant l'écriture
+                                
+                                // Gérer la pause pendant l'écriture
+                                while (isPaused) {
+                                    delay(500)
+                                    ensureActive()
+                                }
+                                
                                 output.write(buffer, 0, bytes)
                                 totalDownloadedSize += bytes
                                 bytes = input.read(buffer)
@@ -238,38 +351,65 @@ class DownloadService : Service() {
                     throw Exception("Erreur lors de la finalisation du fichier")
                 }
 
+                // Émettre l'événement de completion
+                emitDownloadEvent(DownloadEvent.Complete(m3u8Url, finalFile.absolutePath))
+
                 notificationHelper?.showDownloadCompleteNotification(
                     notificationId = notificationId,
                     title = sanitizedTitle,
                     filePath = finalFile.absolutePath
                 )
 
+                // Nettoyer les maps
+                activeDownloads.remove(m3u8Url)
+                downloadSizes.remove(m3u8Url)
+                downloadProgress.remove(m3u8Url)
+                downloadedSizes.remove(m3u8Url)
+
                 // Arrêter le service si c'était le dernier téléchargement
-                stopForeground(true)
-                stopSelf()
+                if (activeDownloads.isEmpty()) {
+                    stopForeground(true)
+                    stopSelf()
+                }
 
             } catch (e: CancellationException) {
                 Log.d("DownloadService", "Téléchargement annulé")
                 cleanupPartialFile()
+                emitDownloadEvent(DownloadEvent.Cancelled(m3u8Url))
                 notificationHelper?.showDownloadErrorNotification(
                     notificationId = notificationId,
                     title = videoTitle ?: "Téléchargement",
                     error = "Téléchargement annulé"
                 )
-                stopForeground(true)
-                stopSelf()
+                activeDownloads.remove(m3u8Url)
+                downloadSizes.remove(m3u8Url)
+                downloadProgress.remove(m3u8Url)
+                downloadedSizes.remove(m3u8Url)
+                if (activeDownloads.isEmpty()) {
+                    stopForeground(true)
+                    stopSelf()
+                }
             } catch (e: Exception) {
                 Log.e("DownloadService", "Erreur de téléchargement", e)
                 cleanupPartialFile()
+                emitDownloadEvent(DownloadEvent.Error(m3u8Url, e.message ?: "Erreur inconnue"))
                 notificationHelper?.showDownloadErrorNotification(
                     notificationId = notificationId,
                     title = videoTitle ?: "Téléchargement",
                     error = e.message ?: "Erreur inconnue"
                 )
-                stopForeground(true)
-                stopSelf()
+                activeDownloads.remove(m3u8Url)
+                downloadSizes.remove(m3u8Url)
+                downloadProgress.remove(m3u8Url)
+                downloadedSizes.remove(m3u8Url)
+                if (activeDownloads.isEmpty()) {
+                    stopForeground(true)
+                    stopSelf()
+                }
             }
         }
+        
+        activeDownloads[m3u8Url] = job
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

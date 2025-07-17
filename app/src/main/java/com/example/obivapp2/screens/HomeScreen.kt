@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
@@ -17,9 +18,12 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -37,6 +41,68 @@ import com.example.obivapp2.viewModel.DownloadViewModel
 import com.example.obivapp2.viewModel.VideoViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.io.File
+
+// Composant personnalisé pour la barre de progression avec bouton play/pause au centre
+@Composable
+fun DownloadProgressBar(
+    progress: Float,
+    isPaused: Boolean,
+    onPlayPauseClick: () -> Unit,
+    onCancelClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .padding(horizontal = 8.dp)
+    ) {
+        // Barre de progression de fond
+        LinearProgressIndicator(
+            progress = progress,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+                .align(Alignment.Center),
+            backgroundColor = Color.Gray.copy(alpha = 0.3f),
+            color = MaterialTheme.colors.primary
+        )
+        
+        // Bouton play/pause au centre
+        IconButton(
+            onClick = onPlayPauseClick,
+            modifier = Modifier
+                .size(32.dp)
+                .align(Alignment.Center)
+                .clip(CircleShape)
+                .background(MaterialTheme.colors.primary)
+        ) {
+            Icon(
+                imageVector = if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                contentDescription = if (isPaused) "Reprendre" else "Mettre en pause",
+                tint = Color.White,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        
+        // Bouton annuler à droite
+        IconButton(
+            onClick = onCancelClick,
+            modifier = Modifier
+                .size(24.dp)
+                .align(Alignment.CenterEnd)
+                .clip(CircleShape)
+                .background(Color.Red.copy(alpha = 0.8f))
+        ) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "Annuler",
+                tint = Color.White,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+    }
+}
 
 
 @Composable
@@ -66,6 +132,9 @@ fun HomeScreen(
             (context as? Activity)?.let {
                 Permissions.requestAllPermissions(it)
             }
+            
+            // Setup download event listener
+            downloadViewModel.setupDownloadEventListener()
         } catch (e: Exception) {
             errorMessage = "Erreur lors du chargement: ${e.message}"
         }
@@ -177,29 +246,37 @@ fun HomeScreen(
                                                             .clickable { isDialogOpen = true },
                                                     )
                                                     Column {
-                                                        Row {
-                                                            IconButton(onClick = {
-                                                                videoViewModel.videoUrlToShare.value?.let {
-                                                                    shareLink(
-                                                                        context,
-                                                                        it
+                                                        Column(
+                                                            modifier = Modifier.fillMaxWidth()
+                                                        ) {
+                                                            // Boutons d'action (Partager et Ouvrir)
+                                                            Row(
+                                                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                                                modifier = Modifier.fillMaxWidth()
+                                                            ) {
+                                                                IconButton(onClick = {
+                                                                    videoViewModel.videoUrlToShare.value?.let {
+                                                                        shareLink(
+                                                                            context,
+                                                                            it
+                                                                        )
+                                                                    }
+                                                                }) {
+                                                                    Icon(
+                                                                        imageVector = Icons.Default.Share,
+                                                                        contentDescription = "Partager"
                                                                     )
                                                                 }
-                                                            }) {
-                                                                Icon(
-                                                                    imageVector = Icons.Default.Share,
-                                                                    contentDescription = "Partager"
-                                                                )
+                                                                IconButton(onClick = {
+                                                                    navController.navigate("video")
+                                                                }) {
+                                                                    Icon(
+                                                                        imageVector = Icons.Default.PlayArrow,
+                                                                        contentDescription = "Ouvrir"
+                                                                    )
+                                                                }
                                                             }
-                                                            IconButton(onClick = {
-                                                                navController.navigate("video")
-                                                            }) {
-                                                                Icon(
-                                                                    imageVector = Icons.Default.PlayArrow,
-                                                                    contentDescription = "Ouvrir"
-                                                                )
-                                                            }
-
+                                                            
                                                             // Collect download state for this specific video URL
                                                             val videoUrl = videoViewModel.videoUrl.value
                                                             val downloadState by remember(videoUrl) {
@@ -210,90 +287,127 @@ fun HomeScreen(
 
                                                             when (downloadState) {
                                                                 is DownloadState.Idle -> {
-                                                                    IconButton(onClick = {
-                                                                        if (Permissions.hasStoragePermission(context)) {
-                                                                            videoViewModel.videoUrl.value?.let {
-                                                                                downloadViewModel.downloadM3U8(
-                                                                                    it, 
-                                                                                    context,
-                                                                                    videoViewModel.title.value
-                                                                                )
-                                                                            }
-                                                                        } else {
-                                                                            (context as? Activity)?.let {
-                                                                                Permissions.requestStoragePermission(it)
-                                                                            }
-                                                                        }
-                                                                    }) {
-                                                                        Icon(
-                                                                            imageVector = Icons.Default.Download,
-                                                                            contentDescription = "Télécharger"
+                                                                    // Barre de progression vide avec bouton télécharger
+                                                                    Box(
+                                                                        modifier = Modifier
+                                                                            .fillMaxWidth()
+                                                                            .height(48.dp)
+                                                                            .padding(horizontal = 8.dp)
+                                                                    ) {
+                                                                        LinearProgressIndicator(
+                                                                            progress = 0f,
+                                                                            modifier = Modifier
+                                                                                .fillMaxWidth()
+                                                                                .height(8.dp)
+                                                                                .align(Alignment.Center),
+                                                                            backgroundColor = Color.Gray.copy(alpha = 0.3f),
+                                                                            color = MaterialTheme.colors.primary
                                                                         )
+                                                                        
+                                                                        IconButton(
+                                                                            onClick = {
+                                                                                if (Permissions.hasStoragePermission(context)) {
+                                                                                    videoViewModel.videoUrl.value?.let {
+                                                                                        downloadViewModel.downloadM3U8(
+                                                                                            it, 
+                                                                                            context,
+                                                                                            videoViewModel.title.value
+                                                                                        )
+                                                                                    }
+                                                                                } else {
+                                                                                    (context as? Activity)?.let {
+                                                                                        Permissions.requestStoragePermission(it)
+                                                                                    }
+                                                                                }
+                                                                            },
+                                                                            modifier = Modifier
+                                                                                .size(32.dp)
+                                                                                .align(Alignment.Center)
+                                                                                .clip(CircleShape)
+                                                                                .background(MaterialTheme.colors.primary)
+                                                                        ) {
+                                                                            Icon(
+                                                                                imageVector = Icons.Default.Download,
+                                                                                contentDescription = "Télécharger",
+                                                                                tint = Color.White,
+                                                                                modifier = Modifier.size(20.dp)
+                                                                            )
+                                                                        }
                                                                     }
                                                                 }
 
                                                                 is DownloadState.Downloading -> {
                                                                     val downloadingState = downloadState as DownloadState.Downloading
-                                                                    Column(
-                                                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                                                        modifier = Modifier.padding(8.dp)
-                                                                    ) {
-                                                                        CircularProgressIndicator(
-                                                                            progress = downloadingState.progress / 100f,
-                                                                            modifier = Modifier.size(24.dp)
-                                                                        )
-                                                                        Spacer(modifier = Modifier.height(4.dp))
-                                                                        Text(
-                                                                            text = "${downloadingState.currentSegment}/${downloadingState.totalSegments}",
-                                                                            style = MaterialTheme.typography.caption
-                                                                        )
-                                                                        Text(
-                                                                            text = "${downloadingState.downloadedSize / (1024 * 1024)} Mo",
-                                                                            style = MaterialTheme.typography.caption
-                                                                        )
-                                                                    }
+                                                                    DownloadProgressBar(
+                                                                        progress = downloadingState.progress / 100f, // Convertir Int (0-100) en Float (0.0-1.0)
+                                                                        isPaused = downloadingState.isPaused,
+                                                                        onPlayPauseClick = {
+                                                                            videoViewModel.videoUrl.value?.let {
+                                                                                downloadViewModel.togglePauseResume(it, context)
+                                                                            }
+                                                                        },
+                                                                        onCancelClick = {
+                                                                            videoViewModel.videoUrl.value?.let {
+                                                                                downloadViewModel.cancelDownload(it, context)
+                                                                            }
+                                                                        }
+                                                                    )
                                                                 }
 
                                                                 is DownloadState.Success -> {
-                                                                    val successState = downloadState as DownloadState.Success
-                                                                    Column(
-                                                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                                                        modifier = Modifier.padding(8.dp)
+                                                                    // Barre de progression complète avec icône de succès
+                                                                    Box(
+                                                                        modifier = Modifier
+                                                                            .fillMaxWidth()
+                                                                            .height(48.dp)
+                                                                            .padding(horizontal = 8.dp)
                                                                     ) {
+                                                                        LinearProgressIndicator(
+                                                                            progress = 1f,
+                                                                            modifier = Modifier
+                                                                                .fillMaxWidth()
+                                                                                .height(8.dp)
+                                                                                .align(Alignment.Center),
+                                                                            backgroundColor = Color.Gray.copy(alpha = 0.3f),
+                                                                            color = Color.Green
+                                                                        )
+                                                                        
                                                                         Icon(
                                                                             imageVector = Icons.Default.CheckCircle,
                                                                             contentDescription = "Succès",
-                                                                            tint = Color.Green
-                                                                        )
-                                                                        Spacer(modifier = Modifier.height(4.dp))
-                                                                        Text(
-                                                                            text = "Téléchargé !",
-                                                                            style = MaterialTheme.typography.caption
-                                                                        )
-                                                                        Text(
-                                                                            text = "Dans Downloads/${successState.filePath.substringAfterLast("/")}",
-                                                                            style = MaterialTheme.typography.caption,
-                                                                            fontSize = 10.sp
+                                                                            tint = Color.Green,
+                                                                            modifier = Modifier
+                                                                                .size(24.dp)
+                                                                                .align(Alignment.Center)
                                                                         )
                                                                     }
                                                                 }
 
                                                                 is DownloadState.Error -> {
-                                                                    val errorState = downloadState as DownloadState.Error
-                                                                    Column(
-                                                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                                                        modifier = Modifier.padding(8.dp)
+                                                                    // Barre de progression avec icône d'erreur
+                                                                    Box(
+                                                                        modifier = Modifier
+                                                                            .fillMaxWidth()
+                                                                            .height(48.dp)
+                                                                            .padding(horizontal = 8.dp)
                                                                     ) {
+                                                                        LinearProgressIndicator(
+                                                                            progress = 0f,
+                                                                            modifier = Modifier
+                                                                                .fillMaxWidth()
+                                                                                .height(8.dp)
+                                                                                .align(Alignment.Center),
+                                                                            backgroundColor = Color.Gray.copy(alpha = 0.3f),
+                                                                            color = Color.Red
+                                                                        )
+                                                                        
                                                                         Icon(
                                                                             imageVector = Icons.Default.Error,
                                                                             contentDescription = "Erreur",
-                                                                            tint = Color.Red
-                                                                        )
-                                                                        Spacer(modifier = Modifier.height(4.dp))
-                                                                        Text(
-                                                                            text = errorState.message,
-                                                                            style = MaterialTheme.typography.caption,
-                                                                            color = Color.Red
+                                                                            tint = Color.Red,
+                                                                            modifier = Modifier
+                                                                                .size(24.dp)
+                                                                                .align(Alignment.Center)
                                                                         )
                                                                     }
                                                                 }
