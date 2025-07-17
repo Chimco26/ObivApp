@@ -110,6 +110,7 @@ class DownloadService : Service() {
     private var downloadedSizes = mutableMapOf<String, Long>()
     private var pausedDownloads = mutableSetOf<String>()
     private var partialFiles = mutableMapOf<String, File>()
+    private var videoTitles = mutableMapOf<String, String>()
 
     override fun onCreate() {
         super.onCreate()
@@ -180,6 +181,7 @@ class DownloadService : Service() {
                     downloadProgress.remove(url)
                     downloadedSizes.remove(url)
                     pausedDownloads.remove(url)
+                    videoTitles.remove(url)
                     // Nettoyer impérativement le fichier partiel
                     cleanupPartialFileForUrl(url)
                     emitDownloadEvent(DownloadEvent.Cancelled(url))
@@ -259,6 +261,7 @@ class DownloadService : Service() {
         val downloadedSize = downloadedSizes[url] ?: 0L
         val progress = downloadProgress[url] ?: 0
         val isPaused = pausedDownloads.contains(url)
+        val videoTitle = videoTitles[url] ?: "Vidéo"
         
         Log.d("DownloadService", "Mise à jour notification pour $url - Pause: $isPaused, Progression: $progress%")
         
@@ -287,7 +290,7 @@ class DownloadService : Service() {
         
         notificationHelper?.showDownloadProgressNotificationWithActions(
             notificationId = url.hashCode(),
-            title = "Téléchargement ${if (isPaused) "en pause" else "en cours"}",
+            title = videoTitle,
             progress = progress,
             downloadedSize = downloadedSize,
             totalSize = downloadSize,
@@ -299,6 +302,9 @@ class DownloadService : Service() {
 
     private fun startDownload(m3u8Url: String, videoTitle: String?) {
         val notificationId = m3u8Url.hashCode()
+        
+        // Stocker le titre de la vidéo pour les notifications
+        videoTitles[m3u8Url] = videoTitle ?: "Vidéo"
 
         val job = serviceScope.launch {
             try {
@@ -347,20 +353,12 @@ class DownloadService : Service() {
                     downloadSizes[m3u8Url] = totalSize
                 }, m3u8Url)
 
-                val dateFormat = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.getDefault())
-                val timestamp = dateFormat.format(Date())
                 val sanitizedTitle = videoTitle?.replace(Regex("[^a-zA-Z0-9.-]"), "_") ?: "video"
-                val fileName = "${sanitizedTitle}_${timestamp}.mp4"
+                val fileName = "${sanitizedTitle}.mp4"
                 val tempFileName = "$fileName$TEMP_FILE_SUFFIX"
 
                 // Créer le dossier personnalisé pour les vidéos
-                val baseDownloadDir = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    // Android 10+ : utiliser le dossier Downloads de l'app
-                    File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "obivap movies")
-                } else {
-                    // Android < 10 : utiliser le dossier Downloads public
-                    File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "obivap movies")
-                }
+                val baseDownloadDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "obivap movies")
                 val customDir = baseDownloadDir
                 
                 Log.d("DownloadService", "Dossier de base: ${baseDownloadDir.absolutePath}")
@@ -478,6 +476,7 @@ class DownloadService : Service() {
                 downloadProgress.remove(m3u8Url)
                 downloadedSizes.remove(m3u8Url)
                 pausedDownloads.remove(m3u8Url)
+                videoTitles.remove(m3u8Url)
 
                 // Arrêter le service si c'était le dernier téléchargement
                 if (activeDownloads.isEmpty()) {
@@ -504,6 +503,7 @@ class DownloadService : Service() {
                 downloadProgress.remove(m3u8Url)
                 downloadedSizes.remove(m3u8Url)
                 pausedDownloads.remove(m3u8Url)
+                videoTitles.remove(m3u8Url)
                 if (activeDownloads.isEmpty()) {
                     stopForeground(true)
                     stopSelf()
@@ -527,6 +527,7 @@ class DownloadService : Service() {
                 downloadProgress.remove(m3u8Url)
                 downloadedSizes.remove(m3u8Url)
                 pausedDownloads.remove(m3u8Url)
+                videoTitles.remove(m3u8Url)
                 if (activeDownloads.isEmpty()) {
                     stopForeground(true)
                     stopSelf()

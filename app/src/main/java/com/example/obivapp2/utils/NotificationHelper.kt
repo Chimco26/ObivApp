@@ -17,6 +17,24 @@ class NotificationHelper(private val context: Context) {
         private const val CHANNEL_ID = "download_channel"
         private const val CHANNEL_NAME = "Téléchargements"
         private const val CHANNEL_DESCRIPTION = "Notifications de progression des téléchargements"
+        
+        private fun formatFileSize(bytes: Long): String {
+            return when {
+                bytes >= 1024 * 1024 * 1024 -> {
+                    val gb = bytes.toDouble() / (1024 * 1024 * 1024)
+                    "%.1f Go".format(gb)
+                }
+                bytes >= 1024 * 1024 -> {
+                    val mb = bytes.toDouble() / (1024 * 1024)
+                    "%.0f Mo".format(mb)
+                }
+                bytes >= 1024 -> {
+                    val kb = bytes.toDouble() / 1024
+                    "%.0f Ko".format(kb)
+                }
+                else -> "$bytes octets"
+            }
+        }
     }
 
     init {
@@ -46,8 +64,8 @@ class NotificationHelper(private val context: Context) {
         totalSize: Long,
         isPaused: Boolean = false
     ) {
-        val downloadedMB = downloadedSize / (1024 * 1024)
-        val totalMB = totalSize / (1024 * 1024)
+        val downloadedFormatted = formatFileSize(downloadedSize)
+        val totalFormatted = formatFileSize(totalSize)
         
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
@@ -56,7 +74,7 @@ class NotificationHelper(private val context: Context) {
             .setProgress(100, progress, false)
             .setOngoing(!isPaused) // La notification peut être balayée si en pause
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setSubText("$downloadedMB Mo / $totalMB Mo")
+            .setSubText("$downloadedFormatted / $totalFormatted")
 
         NotificationManagerCompat.from(context).notify(notificationId, builder.build())
     }
@@ -71,8 +89,8 @@ class NotificationHelper(private val context: Context) {
         pauseResumePendingIntent: PendingIntent? = null,
         cancelPendingIntent: PendingIntent? = null
     ) {
-        val downloadedMB = downloadedSize / (1024 * 1024)
-        val totalMB = totalSize / (1024 * 1024)
+        val downloadedFormatted = formatFileSize(downloadedSize)
+        val totalFormatted = formatFileSize(totalSize)
         
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
@@ -81,7 +99,7 @@ class NotificationHelper(private val context: Context) {
             .setProgress(100, progress, false)
             .setOngoing(!isPaused) // La notification peut être balayée si en pause
             .setPriority(NotificationCompat.PRIORITY_DEFAULT) // Augmenter la priorité pour forcer l'affichage
-            .setSubText("$downloadedMB Mo / $totalMB Mo ($progress%)")
+            .setSubText("$downloadedFormatted / $totalFormatted ($progress%)")
             .setStyle(NotificationCompat.BigTextStyle().bigText(if (isPaused) "En pause - Appuyez sur Reprendre" else "Téléchargement en cours - Appuyez sur Pause pour arrêter"))
 
         // Ajouter les actions si les PendingIntent sont fournis
@@ -110,6 +128,14 @@ class NotificationHelper(private val context: Context) {
         filePath: String
     ) {
         val file = File(filePath)
+        
+        // Déterminer le message selon l'emplacement du fichier
+        val locationMessage = if (filePath.contains("Android/data")) {
+            "Fichier dans le dossier privé de l'app"
+        } else {
+            "Fichier dans Downloads/obivap movies"
+        }
+        
         val fileUri = FileProvider.getUriForFile(
             context,
             "${context.packageName}.provider",
@@ -144,7 +170,7 @@ class NotificationHelper(private val context: Context) {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setContentTitle(title)
-            .setContentText("Téléchargement terminé")
+            .setContentText("Téléchargement terminé - $locationMessage")
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true) // La notification disparaît quand on clique dessus
             .setContentIntent(pendingOpenIntent) // Action principale : ouvrir le fichier

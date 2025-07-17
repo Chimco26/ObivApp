@@ -306,18 +306,12 @@ fun HomeScreen(
                                                                         
                                                                         IconButton(
                                                                             onClick = {
-                                                                                if (Permissions.hasStoragePermission(context)) {
-                                                                                    videoViewModel.videoUrl.value?.let {
-                                                                                        downloadViewModel.downloadM3U8(
-                                                                                            it, 
-                                                                                            context,
-                                                                                            videoViewModel.title.value
-                                                                                        )
-                                                                                    }
-                                                                                } else {
-                                                                                    (context as? Activity)?.let {
-                                                                                        Permissions.requestStoragePermission(it)
-                                                                                    }
+                                                                                videoViewModel.videoUrl.value?.let {
+                                                                                    downloadViewModel.downloadM3U8(
+                                                                                        it, 
+                                                                                        context,
+                                                                                        videoViewModel.title.value
+                                                                                    )
                                                                                 }
                                                                             },
                                                                             modifier = Modifier
@@ -408,6 +402,26 @@ fun HomeScreen(
                                                                             modifier = Modifier
                                                                                 .size(24.dp)
                                                                                 .align(Alignment.Center)
+                                                                        )
+                                                                    }
+                                                                }
+                                                                
+                                                                else -> {
+                                                                    // État par défaut (vide)
+                                                                    Box(
+                                                                        modifier = Modifier
+                                                                            .fillMaxWidth()
+                                                                            .height(48.dp)
+                                                                            .padding(horizontal = 8.dp)
+                                                                    ) {
+                                                                        LinearProgressIndicator(
+                                                                            progress = 0f,
+                                                                            modifier = Modifier
+                                                                                .fillMaxWidth()
+                                                                                .height(8.dp)
+                                                                                .align(Alignment.Center),
+                                                                            backgroundColor = Color.Gray.copy(alpha = 0.3f),
+                                                                            color = MaterialTheme.colors.primary
                                                                         )
                                                                     }
                                                                 }
