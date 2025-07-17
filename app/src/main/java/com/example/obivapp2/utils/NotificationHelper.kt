@@ -61,6 +61,49 @@ class NotificationHelper(private val context: Context) {
         NotificationManagerCompat.from(context).notify(notificationId, builder.build())
     }
 
+    fun showDownloadProgressNotificationWithActions(
+        notificationId: Int,
+        title: String,
+        progress: Int,
+        downloadedSize: Long,
+        totalSize: Long,
+        isPaused: Boolean = false,
+        pauseResumePendingIntent: PendingIntent? = null,
+        cancelPendingIntent: PendingIntent? = null
+    ) {
+        val downloadedMB = downloadedSize / (1024 * 1024)
+        val totalMB = totalSize / (1024 * 1024)
+        
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle(title)
+            .setContentText(if (isPaused) "En pause" else "Téléchargement en cours...")
+            .setProgress(100, progress, false)
+            .setOngoing(!isPaused) // La notification peut être balayée si en pause
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT) // Augmenter la priorité pour forcer l'affichage
+            .setSubText("$downloadedMB Mo / $totalMB Mo ($progress%)")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(if (isPaused) "En pause - Appuyez sur Reprendre" else "Téléchargement en cours - Appuyez sur Pause pour arrêter"))
+
+        // Ajouter les actions si les PendingIntent sont fournis
+        pauseResumePendingIntent?.let {
+            builder.addAction(
+                if (isPaused) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause,
+                if (isPaused) "▶ Reprendre" else "⏸ Pause",
+                it
+            )
+        }
+        
+        cancelPendingIntent?.let {
+            builder.addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                "❌ Annuler",
+                it
+            )
+        }
+
+        NotificationManagerCompat.from(context).notify(notificationId, builder.build())
+    }
+
     fun showDownloadCompleteNotification(
         notificationId: Int,
         title: String,

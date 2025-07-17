@@ -99,6 +99,28 @@ class DownloadViewModel : ViewModel() {
                 }
                 stateFlow.value = DownloadState.Idle
             }
+            
+            is DownloadService.DownloadEvent.NetworkLost -> {
+                val stateFlow = downloadStates.getOrPut(event.url) {
+                    MutableStateFlow(DownloadState.Idle)
+                }
+                val currentState = stateFlow.value
+                if (currentState is DownloadState.Downloading) {
+                    stateFlow.value = currentState.copy(isPaused = true)
+                }
+                Log.d("DownloadViewModel", "Réseau perdu pour: ${event.url}")
+            }
+            
+            is DownloadService.DownloadEvent.NetworkRestored -> {
+                val stateFlow = downloadStates.getOrPut(event.url) {
+                    MutableStateFlow(DownloadState.Idle)
+                }
+                val currentState = stateFlow.value
+                if (currentState is DownloadState.Downloading) {
+                    stateFlow.value = currentState.copy(isPaused = false)
+                }
+                Log.d("DownloadViewModel", "Réseau restauré pour: ${event.url}")
+            }
         }
     }
 
