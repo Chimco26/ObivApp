@@ -36,8 +36,6 @@ class DownloadService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + Job())
     private var notificationHelper: NotificationHelper? = null
     private val cookieJar = CookieJar.NO_COOKIES
-    private var currentJob: Job? = null
-    private var currentFile: File? = null
 
     // Gestion du réseau
     private var connectivityManager: ConnectivityManager? = null
@@ -160,6 +158,16 @@ class DownloadService : Service() {
         _downloadEvents.value = event
     }
 
+    private fun cleanupDownloadData(url: String) {
+        activeDownloads.remove(url)
+        downloadSizes.remove(url)
+        downloadProgress.remove(url)
+        downloadedSizes.remove(url)
+        pausedDownloads.remove(url)
+        videoTitles.remove(url)
+        cleanupPartialFileForUrl(url)
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START_DOWNLOAD -> {
@@ -176,14 +184,7 @@ class DownloadService : Service() {
                 val url = intent.getStringExtra(EXTRA_URL)
                 if (url != null) {
                     activeDownloads[url]?.cancel()
-                    activeDownloads.remove(url)
-                    downloadSizes.remove(url)
-                    downloadProgress.remove(url)
-                    downloadedSizes.remove(url)
-                    pausedDownloads.remove(url)
-                    videoTitles.remove(url)
-                    // Nettoyer impérativement le fichier partiel
-                    cleanupPartialFileForUrl(url)
+                    cleanupDownloadData(url)
                     emitDownloadEvent(DownloadEvent.Cancelled(url))
                 }
                 if (activeDownloads.isEmpty()) {
@@ -212,21 +213,6 @@ class DownloadService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun cancelDownload() {
-        currentJob?.cancel()
-        cleanupPartialFile()
-        stopSelf()
-    }
-
-    private fun cleanupPartialFile() {
-        currentFile?.let { file ->
-            if (file.exists() && file.name.endsWith(TEMP_FILE_SUFFIX)) {
-                file.delete()
-                Log.d("DownloadService", "Fichier partiel supprimé: ${file.name}")
-            }
-        }
-    }
-    
     private fun cleanupPartialFileForUrl(url: String) {
         partialFiles[url]?.let { file ->
             if (file.exists() && file.name.endsWith(TEMP_FILE_SUFFIX)) {
@@ -382,7 +368,6 @@ class DownloadService : Service() {
                 val tempFile = File(customDir, tempFileName)
                 val finalFile = File(customDir, fileName)
                 
-                currentFile = tempFile
                 // Enregistrer le fichier partiel pour ce téléchargement
                 partialFiles[m3u8Url] = tempFile
 
@@ -471,12 +456,7 @@ class DownloadService : Service() {
                 )
 
                 // Nettoyer les maps
-                activeDownloads.remove(m3u8Url)
-                downloadSizes.remove(m3u8Url)
-                downloadProgress.remove(m3u8Url)
-                downloadedSizes.remove(m3u8Url)
-                pausedDownloads.remove(m3u8Url)
-                videoTitles.remove(m3u8Url)
+                cleanupDownloadData(m3u8Url)
 
                 // Arrêter le service si c'était le dernier téléchargement
                 if (activeDownloads.isEmpty()) {
@@ -498,12 +478,7 @@ class DownloadService : Service() {
                     title = videoTitle ?: "Téléchargement",
                     error = "Téléchargement annulé"
                 )
-                activeDownloads.remove(m3u8Url)
-                downloadSizes.remove(m3u8Url)
-                downloadProgress.remove(m3u8Url)
-                downloadedSizes.remove(m3u8Url)
-                pausedDownloads.remove(m3u8Url)
-                videoTitles.remove(m3u8Url)
+                cleanupDownloadData(m3u8Url)
                 if (activeDownloads.isEmpty()) {
                     stopForeground(true)
                     stopSelf()
@@ -522,12 +497,7 @@ class DownloadService : Service() {
                     title = videoTitle ?: "Téléchargement",
                     error = e.message ?: "Erreur inconnue"
                 )
-                activeDownloads.remove(m3u8Url)
-                downloadSizes.remove(m3u8Url)
-                downloadProgress.remove(m3u8Url)
-                downloadedSizes.remove(m3u8Url)
-                pausedDownloads.remove(m3u8Url)
-                videoTitles.remove(m3u8Url)
+                cleanupDownloadData(m3u8Url)
                 if (activeDownloads.isEmpty()) {
                     stopForeground(true)
                     stopSelf()
@@ -671,7 +641,6 @@ class DownloadService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        cancelDownload()
         serviceScope.cancel()
         networkCallback?.let { connectivityManager?.unregisterNetworkCallback(it) }
     }
