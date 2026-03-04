@@ -2,7 +2,9 @@ package com.example.obivapp2.screens
 
 import MainViewModel
 import android.app.Activity
+import androidx.compose.animation.animateColor
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,6 +22,9 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,69 +47,72 @@ import com.example.obivapp2.viewModel.VideoViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.io.File
 
-// Composant personnalisé pour la barre de progression avec bouton play/pause au centre
 @Composable
-fun DownloadProgressBar(
-    progress: Float,
-    isPaused: Boolean,
-    onPlayPauseClick: () -> Unit,
+fun CreativeDownloadButton(
+    state: DownloadState,
+    onDownloadClick: () -> Unit,
+    onPauseResumeClick: () -> Unit,
     onCancelClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(48.dp)
-            .padding(horizontal = 8.dp)
-    ) {
-        // Barre de progression de fond
-        LinearProgressIndicator(
-            progress = progress,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(8.dp)
-                .align(Alignment.Center),
-            backgroundColor = Color.Gray.copy(alpha = 0.3f),
-            color = MaterialTheme.colors.primary
-        )
-        
-        // Bouton play/pause au centre
-        IconButton(
-            onClick = onPlayPauseClick,
-            modifier = Modifier
-                .size(32.dp)
-                .align(Alignment.Center)
-                .clip(CircleShape)
-                .background(MaterialTheme.colors.primary)
-        ) {
-            Icon(
-                imageVector = if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
-                contentDescription = if (isPaused) "Reprendre" else "Mettre en pause",
-                tint = Color.White,
-                modifier = Modifier.size(20.dp)
-            )
+    val transition = updateTransition(targetState = state, label = "DownloadTransition")
+    
+    val backgroundColor by transition.animateColor(label = "Color") { s ->
+        when (s) {
+            is DownloadState.Success -> Color(0xFF4CAF50)
+            is DownloadState.Error -> Color(0xFFF44336)
+            is DownloadState.Downloading -> if (s.isPaused) Color.Gray else MaterialTheme.colors.primary
+            else -> MaterialTheme.colors.primary
         }
-        
-        // Bouton annuler à droite
-        IconButton(
-            onClick = onCancelClick,
-            modifier = Modifier
-                .size(24.dp)
-                .align(Alignment.CenterEnd)
-                .clip(CircleShape)
-                .background(Color.Red.copy(alpha = 0.8f))
-        ) {
-            Icon(
-                imageVector = Icons.Default.Close,
-                contentDescription = "Annuler",
-                tint = Color.White,
-                modifier = Modifier.size(16.dp)
-            )
+    }
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier.animateContentSize()
+    ) {
+        if (state is DownloadState.Idle) {
+            IconButton(onClick = onDownloadClick) {
+                Icon(Icons.Default.Download, contentDescription = "Télécharger", tint = MaterialTheme.colors.primary)
+            }
+        } else {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .background(backgroundColor.copy(alpha = 0.1f), CircleShape)
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(36.dp)) {
+                    val progress = when (state) {
+                        is DownloadState.Downloading -> state.progress / 100f
+                        is DownloadState.Success -> 1f
+                        else -> 0f
+                    }
+                    CircularProgressIndicator(progress = 1f, color = backgroundColor.copy(alpha = 0.2f), strokeWidth = 2.dp, modifier = Modifier.size(28.dp))
+                    CircularProgressIndicator(progress = progress, color = backgroundColor, strokeWidth = 2.dp, modifier = Modifier.size(28.dp))
+                    
+                    if (state is DownloadState.Downloading) {
+                        IconButton(onClick = onPauseResumeClick, modifier = Modifier.size(24.dp)) {
+                            Icon(imageVector = if (state.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause, contentDescription = null, tint = backgroundColor, modifier = Modifier.size(12.dp))
+                        }
+                    } else if (state is DownloadState.Success) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = backgroundColor, modifier = Modifier.size(16.dp))
+                    } else if (state is DownloadState.Error) {
+                        Icon(Icons.Default.Error, contentDescription = null, tint = backgroundColor, modifier = Modifier.size(16.dp))
+                    }
+                }
+                
+                if (state is DownloadState.Downloading) {
+                    Text(text = "${state.progress}%", fontSize = 10.sp, color = backgroundColor, modifier = Modifier.padding(horizontal = 2.dp))
+                    IconButton(onClick = onCancelClick, modifier = Modifier.size(24.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(12.dp))
+                    }
+                }
+            }
         }
     }
 }
 
-
+@OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun HomeScreen(
     navController: NavController,
@@ -122,18 +130,16 @@ fun HomeScreen(
     val downloadViewModel: DownloadViewModel = viewModel()
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // Add LaunchedEffect to fetch links when the screen starts
+    val pullRefreshState = rememberPullRefreshState(
+        refreshing = isLoading,
+        onRefresh = { searchText = ""; mainViewModel.fetchLinks() }
+    )
+
     LaunchedEffect(Unit) {
         try {
             errorMessage = null
             mainViewModel.fetchLinks()
-            
-            // Demander toutes les permissions nécessaires au démarrage
-            (context as? Activity)?.let {
-                Permissions.requestAllPermissions(it)
-            }
-            
-            // Setup download event listener
+            (context as? Activity)?.let { Permissions.requestAllPermissions(it) }
             downloadViewModel.setupDownloadEventListener()
         } catch (e: Exception) {
             errorMessage = "Erreur lors du chargement: ${e.message}"
@@ -141,296 +147,87 @@ fun HomeScreen(
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(title = { Text("Home Screen") })
-        }
+        topBar = { TopAppBar(title = { Text("Home Screen") }) }
     ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-            ) {
-                // Champ de recherche
+        Box(modifier = Modifier.fillMaxSize().padding(paddingValues).pullRefresh(pullRefreshState)) {
+            Column(modifier = Modifier.fillMaxSize()) {
                 OutlinedTextField(
                     value = searchText,
-                    onValueChange = {
-                        searchText = it
-                        mainViewModel.searchVideo(searchText)
-                    },
+                    onValueChange = { searchText = it; mainViewModel.searchVideo(searchText) },
                     label = { Text("Rechercher") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(8.dp)
+                    modifier = Modifier.fillMaxWidth().padding(8.dp)
                 )
 
-                // Afficher le chargement ou l'erreur
-                when {
-                    errorMessage != null -> {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = errorMessage ?: "",
-                                color = Color.Red,
-                                modifier = Modifier.padding(16.dp)
-                            )
-                        }
+                if (errorMessage != null) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(text = errorMessage!!, color = Color.Red, modifier = Modifier.padding(16.dp))
                     }
-                    links.isEmpty() && !isLoading -> {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Aucun résultat trouvé",
-                                modifier = Modifier.padding(16.dp)
-                            )
-                        }
+                } else if (links.isEmpty() && !isLoading) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(text = "Aucun résultat trouvé", modifier = Modifier.padding(16.dp))
                     }
-                    else -> {
-                        // Liste existante
-                        LazyColumn(
-                            modifier = Modifier.padding(8.dp)
-                        ) {
-                            items(links) { linkData ->
-                                val currentIndex = links.indexOf(linkData)
-                                Card(
-                                    shape = RoundedCornerShape(8.dp),
-                                    elevation = 4.dp,
-                                    modifier = Modifier
-                                        .animateContentSize()
-                                        .padding(vertical = 4.dp)
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            videoViewModel.resetLinkVideo()
-                                            videoViewModel.fetchLinkVideo(linkData.url, linkData.text)
-                                            expandedItemIndex =
-                                                if (expandedItemIndex == currentIndex) null else currentIndex
-                                        }
-                                ) {
-                                    Column(
-                                        modifier = Modifier
-                                            .padding(16.dp)
-                                            .background(Color.White)
-                                    ) {
-                                        Text(
-                                            text = linkData.text,
-                                            modifier = Modifier.padding(bottom = 8.dp)
-                                        )
+                } else {
+                    LazyColumn(modifier = Modifier.padding(8.dp).fillMaxSize()) {
+                        items(links) { linkData ->
+                            val currentIndex = links.indexOf(linkData)
+                            Card(
+                                shape = RoundedCornerShape(12.dp),
+                                elevation = 4.dp,
+                                modifier = Modifier.animateContentSize().padding(vertical = 6.dp).fillMaxWidth().clickable {
+                                    videoViewModel.resetLinkVideo()
+                                    videoViewModel.fetchLinkVideo(linkData.url, linkData.text)
+                                    expandedItemIndex = if (expandedItemIndex == currentIndex) null else currentIndex
+                                }
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp).background(Color.White)) {
+                                    Text(text = linkData.text, modifier = Modifier.padding(bottom = 8.dp))
 
-                                        // Afficher les boutons si l'élément est étendu
-                                        if (expandedItemIndex == currentIndex) {
-                                            if (videoViewModel.isDataNull()) {
-                                                CircularProgressIndicator(
-                                                    strokeWidth = 2.dp,
-                                                    modifier = Modifier
-                                                        .size(100.dp)
-                                                        .align(Alignment.CenterHorizontally),
-                                                    color = Color.Black
+                                    if (expandedItemIndex == currentIndex) {
+                                        if (videoViewModel.isDataNull()) {
+                                            Box(modifier = Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
+                                                CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(48.dp), color = Color.Black)
+                                            }
+                                        } else {
+                                            Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
+                                                Image(
+                                                    painter = rememberAsyncImagePainter(imageUrl),
+                                                    contentDescription = null,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.size(100.dp, 150.dp).clip(RoundedCornerShape(8.dp)).clickable { isDialogOpen = true }
                                                 )
-                                            } else {
-                                                Row(
-                                                    horizontalArrangement = Arrangement.SpaceEvenly,
-                                                    modifier = Modifier.fillMaxWidth()
-                                                ) {
-                                                    Image(
-                                                        painter = rememberAsyncImagePainter(imageUrl),
-                                                        contentDescription = "Votre image",
-                                                        modifier = Modifier
-                                                            .size(100.dp)
-                                                            .clickable { isDialogOpen = true },
-                                                    )
-                                                    Column {
-                                                        Column(
-                                                            modifier = Modifier.fillMaxWidth()
-                                                        ) {
-                                                            // Boutons d'action (Partager et Ouvrir)
-                                                            Row(
-                                                                horizontalArrangement = Arrangement.SpaceEvenly,
-                                                                modifier = Modifier.fillMaxWidth()
-                                                            ) {
-                                                                IconButton(onClick = {
-                                                                    videoViewModel.videoUrlToShare.value?.let {
-                                                                        shareLink(
-                                                                            context,
-                                                                            it
-                                                                        )
-                                                                    }
-                                                                }) {
-                                                                    Icon(
-                                                                        imageVector = Icons.Default.Share,
-                                                                        contentDescription = "Partager"
-                                                                    )
-                                                                }
-                                                                IconButton(onClick = {
-                                                                    navController.navigate("video")
-                                                                }) {
-                                                                    Icon(
-                                                                        imageVector = Icons.Default.PlayArrow,
-                                                                        contentDescription = "Ouvrir"
-                                                                    )
-                                                                }
-                                                            }
-                                                            
-                                                            // Collect download state for this specific video URL
-                                                            val videoUrl = videoViewModel.videoUrl.value
-                                                            val downloadState by remember(videoUrl) {
-                                                                videoUrl?.let { url ->
-                                                                    downloadViewModel.getDownloadState(url)
-                                                                } ?: MutableStateFlow(DownloadState.Idle)
-                                                            }.collectAsState()
-
-                                                            when (downloadState) {
-                                                                is DownloadState.Idle -> {
-                                                                    // Barre de progression vide avec bouton télécharger
-                                                                    Box(
-                                                                        modifier = Modifier
-                                                                            .fillMaxWidth()
-                                                                            .height(48.dp)
-                                                                            .padding(horizontal = 8.dp)
-                                                                    ) {
-                                                                        LinearProgressIndicator(
-                                                                            progress = 0f,
-                                                                            modifier = Modifier
-                                                                                .fillMaxWidth()
-                                                                                .height(8.dp)
-                                                                                .align(Alignment.Center),
-                                                                            backgroundColor = Color.Gray.copy(alpha = 0.3f),
-                                                                            color = MaterialTheme.colors.primary
-                                                                        )
-                                                                        
-                                                                        IconButton(
-                                                                            onClick = {
-                                                                                videoViewModel.videoUrl.value?.let {
-                                                                                    downloadViewModel.downloadM3U8(
-                                                                                        it, 
-                                                                                        context,
-                                                                                        videoViewModel.title.value
-                                                                                    )
-                                                                                }
-                                                                            },
-                                                                            modifier = Modifier
-                                                                                .size(32.dp)
-                                                                                .align(Alignment.Center)
-                                                                                .clip(CircleShape)
-                                                                                .background(MaterialTheme.colors.primary)
-                                                                        ) {
-                                                                            Icon(
-                                                                                imageVector = Icons.Default.Download,
-                                                                                contentDescription = "Télécharger",
-                                                                                tint = Color.White,
-                                                                                modifier = Modifier.size(20.dp)
-                                                                            )
-                                                                        }
-                                                                    }
-                                                                }
-
-                                                                is DownloadState.Downloading -> {
-                                                                    val downloadingState = downloadState as DownloadState.Downloading
-                                                                    DownloadProgressBar(
-                                                                        progress = downloadingState.progress / 100f, // Convertir Int (0-100) en Float (0.0-1.0)
-                                                                        isPaused = downloadingState.isPaused,
-                                                                        onPlayPauseClick = {
-                                                                            videoViewModel.videoUrl.value?.let {
-                                                                                downloadViewModel.togglePauseResume(it, context)
-                                                                            }
-                                                                        },
-                                                                        onCancelClick = {
-                                                                            videoViewModel.videoUrl.value?.let {
-                                                                                downloadViewModel.cancelDownload(it, context)
-                                                                            }
-                                                                        }
-                                                                    )
-                                                                }
-
-                                                                is DownloadState.Success -> {
-                                                                    // Barre de progression complète avec icône de succès
-                                                                    Box(
-                                                                        modifier = Modifier
-                                                                            .fillMaxWidth()
-                                                                            .height(48.dp)
-                                                                            .padding(horizontal = 8.dp)
-                                                                    ) {
-                                                                        LinearProgressIndicator(
-                                                                            progress = 1f,
-                                                                            modifier = Modifier
-                                                                                .fillMaxWidth()
-                                                                                .height(8.dp)
-                                                                                .align(Alignment.Center),
-                                                                            backgroundColor = Color.Gray.copy(alpha = 0.3f),
-                                                                            color = Color.Green
-                                                                        )
-                                                                        
-                                                                        Icon(
-                                                                            imageVector = Icons.Default.CheckCircle,
-                                                                            contentDescription = "Succès",
-                                                                            tint = Color.Green,
-                                                                            modifier = Modifier
-                                                                                .size(24.dp)
-                                                                                .align(Alignment.Center)
-                                                                        )
-                                                                    }
-                                                                }
-
-                                                                is DownloadState.Error -> {
-                                                                    // Barre de progression avec icône d'erreur
-                                                                    Box(
-                                                                        modifier = Modifier
-                                                                            .fillMaxWidth()
-                                                                            .height(48.dp)
-                                                                            .padding(horizontal = 8.dp)
-                                                                    ) {
-                                                                        LinearProgressIndicator(
-                                                                            progress = 0f,
-                                                                            modifier = Modifier
-                                                                                .fillMaxWidth()
-                                                                                .height(8.dp)
-                                                                                .align(Alignment.Center),
-                                                                            backgroundColor = Color.Gray.copy(alpha = 0.3f),
-                                                                            color = Color.Red
-                                                                        )
-                                                                        
-                                                                        Icon(
-                                                                            imageVector = Icons.Default.Error,
-                                                                            contentDescription = "Erreur",
-                                                                            tint = Color.Red,
-                                                                            modifier = Modifier
-                                                                                .size(24.dp)
-                                                                                .align(Alignment.Center)
-                                                                        )
-                                                                    }
-                                                                }
-                                                                
-                                                                else -> {
-                                                                    // État par défaut (vide)
-                                                                    Box(
-                                                                        modifier = Modifier
-                                                                            .fillMaxWidth()
-                                                                            .height(48.dp)
-                                                                            .padding(horizontal = 8.dp)
-                                                                    ) {
-                                                                        LinearProgressIndicator(
-                                                                            progress = 0f,
-                                                                            modifier = Modifier
-                                                                                .fillMaxWidth()
-                                                                                .height(8.dp)
-                                                                                .align(Alignment.Center),
-                                                                            backgroundColor = Color.Gray.copy(alpha = 0.3f),
-                                                                            color = MaterialTheme.colors.primary
-                                                                        )
-                                                                    }
-                                                                }
-                                                            }
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    // RANGÉE D'ACTIONS HARMONISÉE
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    ) {
+                                                        // GAUCHE : PARTAGER
+                                                        IconButton(onClick = { videoViewModel.videoUrlToShare.value?.let { shareLink(context, it) } }) {
+                                                            Icon(Icons.Default.Share, contentDescription = "Partager", tint = MaterialTheme.colors.primary)
                                                         }
-                                                        description?.let { Text(
-                                                            text = it,
-                                                            style = MaterialTheme.typography.body1,
-                                                            modifier = Modifier.fillMaxWidth()) }
+                                                        
+                                                        // MILIEU : TÉLÉCHARGER (Progressif)
+                                                        val videoUrl = videoViewModel.videoUrl.value
+                                                        val downloadState by remember(videoUrl) {
+                                                            videoUrl?.let { url -> downloadViewModel.getDownloadState(url) } ?: MutableStateFlow(DownloadState.Idle)
+                                                        }.collectAsState()
+
+                                                        CreativeDownloadButton(
+                                                            state = downloadState,
+                                                            onDownloadClick = { videoViewModel.videoUrl.value?.let { downloadViewModel.downloadM3U8(it, context, videoViewModel.title.value) } },
+                                                            onPauseResumeClick = { videoViewModel.videoUrl.value?.let { downloadViewModel.togglePauseResume(it, context) } },
+                                                            onCancelClick = { videoViewModel.videoUrl.value?.let { downloadViewModel.cancelDownload(it, context) } }
+                                                        )
+
+                                                        // DROITE : LIRE
+                                                        IconButton(onClick = { navController.navigate("video") }) {
+                                                            Icon(Icons.Default.PlayArrow, contentDescription = "Ouvrir", tint = MaterialTheme.colors.primary)
+                                                        }
+                                                    }
+                                                    
+                                                    description?.let { 
+                                                        Text(text = it, modifier = Modifier.padding(top = 8.dp)) 
                                                     }
                                                 }
                                             }
@@ -443,46 +240,21 @@ fun HomeScreen(
                 }
             }
 
-            // Overlay ProgressBar
-            if (isLoading) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.3f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(
-                        color = MaterialTheme.colors.primary,
-                        modifier = Modifier.size(48.dp)
-                    )
+            if (links.isNotEmpty()) {
+                PullRefreshIndicator(refreshing = isLoading, state = pullRefreshState, modifier = Modifier.align(Alignment.TopCenter), backgroundColor = Color.White, contentColor = MaterialTheme.colors.primary)
+            }
+
+            if (isLoading && links.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = MaterialTheme.colors.primary, modifier = Modifier.size(48.dp))
                 }
             }
         }
 
         if (isDialogOpen) {
-            Dialog(
-                onDismissRequest = {
-                    isDialogOpen = false
-                },
-                properties = DialogProperties(
-                    usePlatformDefaultWidth = false
-                )
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clickable {
-                            isDialogOpen = false
-                        }
-                ) {
-                    Image(
-                        painter = rememberAsyncImagePainter(imageUrl),
-                        contentDescription = "Image agrandie",
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .fillMaxSize(),
-                        contentScale = ContentScale.Fit
-                    )
+            Dialog(onDismissRequest = { isDialogOpen = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+                Box(modifier = Modifier.fillMaxSize().clickable { isDialogOpen = false }) {
+                    Image(painter = rememberAsyncImagePainter(imageUrl), contentDescription = null, modifier = Modifier.align(Alignment.Center).fillMaxSize(), contentScale = ContentScale.Fit)
                 }
             }
         }

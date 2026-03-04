@@ -46,7 +46,7 @@ class NotificationHelper(private val context: Context) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 CHANNEL_NAME,
-                NotificationManager.IMPORTANCE_LOW // IMPORTANCE_LOW pour ne pas interrompre l'utilisateur
+                NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = CHANNEL_DESCRIPTION
             }
@@ -65,16 +65,20 @@ class NotificationHelper(private val context: Context) {
         isPaused: Boolean = false
     ) {
         val downloadedFormatted = formatFileSize(downloadedSize)
-        val totalFormatted = formatFileSize(totalSize)
+        val subText = if (totalSize > 0) {
+            "$downloadedFormatted / ${formatFileSize(totalSize)} ($progress%)"
+        } else {
+            "$downloadedFormatted ($progress%)"
+        }
         
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle(title)
             .setContentText(if (isPaused) "En pause" else "Téléchargement en cours...")
             .setProgress(100, progress, false)
-            .setOngoing(!isPaused) // La notification peut être balayée si en pause
+            .setOngoing(!isPaused)
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setSubText("$downloadedFormatted / $totalFormatted")
+            .setSubText(subText)
 
         NotificationManagerCompat.from(context).notify(notificationId, builder.build())
     }
@@ -90,19 +94,22 @@ class NotificationHelper(private val context: Context) {
         cancelPendingIntent: PendingIntent? = null
     ) {
         val downloadedFormatted = formatFileSize(downloadedSize)
-        val totalFormatted = formatFileSize(totalSize)
+        val subText = if (totalSize > 0) {
+            "$downloadedFormatted / ${formatFileSize(totalSize)} ($progress%)"
+        } else {
+            "$downloadedFormatted ($progress%)"
+        }
         
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle(title)
             .setContentText(if (isPaused) "En pause" else "Téléchargement en cours...")
             .setProgress(100, progress, false)
-            .setOngoing(!isPaused) // La notification peut être balayée si en pause
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT) // Augmenter la priorité pour forcer l'affichage
-            .setSubText("$downloadedFormatted / $totalFormatted ($progress%)")
+            .setOngoing(!isPaused)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setSubText(subText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(if (isPaused) "En pause - Appuyez sur Reprendre" else "Téléchargement en cours - Appuyez sur Pause pour arrêter"))
 
-        // Ajouter les actions si les PendingIntent sont fournis
         pauseResumePendingIntent?.let {
             builder.addAction(
                 if (isPaused) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause,
@@ -128,13 +135,7 @@ class NotificationHelper(private val context: Context) {
         filePath: String
     ) {
         val file = File(filePath)
-        
-        // Déterminer le message selon l'emplacement du fichier
-        val locationMessage = if (filePath.contains("Android/data")) {
-            "Fichier dans le dossier privé de l'app"
-        } else {
-            "Fichier dans Downloads/obivap movies"
-        }
+        val locationMessage = "Fichier dans Downloads/obivap movies"
         
         val fileUri = FileProvider.getUriForFile(
             context,
@@ -142,7 +143,6 @@ class NotificationHelper(private val context: Context) {
             file
         )
 
-        // Intent pour ouvrir le fichier
         val openIntent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(fileUri, "video/*")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -154,7 +154,6 @@ class NotificationHelper(private val context: Context) {
             PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Intent pour partager le fichier
         val shareIntent = Intent(Intent.ACTION_SEND).apply {
             type = "video/*"
             putExtra(Intent.EXTRA_STREAM, fileUri)
@@ -162,7 +161,7 @@ class NotificationHelper(private val context: Context) {
         }
         val pendingShareIntent = PendingIntent.getActivity(
             context,
-            notificationId + 1000, // Différent ID pour éviter les conflits
+            notificationId + 1000,
             Intent.createChooser(shareIntent, "Partager la vidéo"),
             PendingIntent.FLAG_IMMUTABLE
         )
@@ -172,8 +171,13 @@ class NotificationHelper(private val context: Context) {
             .setContentTitle(title)
             .setContentText("Téléchargement terminé - $locationMessage")
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setAutoCancel(true) // La notification disparaît quand on clique dessus
-            .setContentIntent(pendingOpenIntent) // Action principale : ouvrir le fichier
+            .setAutoCancel(true)
+            .setContentIntent(pendingOpenIntent)
+            .addAction(
+                android.R.drawable.ic_media_play,
+                "Ouvrir",
+                pendingOpenIntent
+            )
             .addAction(
                 android.R.drawable.ic_menu_share,
                 "Partager",
@@ -201,4 +205,4 @@ class NotificationHelper(private val context: Context) {
     fun cancelNotification(notificationId: Int) {
         NotificationManagerCompat.from(context).cancel(notificationId)
     }
-} 
+}
