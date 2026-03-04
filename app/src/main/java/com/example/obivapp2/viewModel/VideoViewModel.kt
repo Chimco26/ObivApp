@@ -40,6 +40,7 @@ class VideoViewModel : ViewModel() {
     private var fetchJob: Job? = null
 
     fun resetLinkVideo(){
+        Log.d("VideoViewModel", "resetLinkVideo called")
         fetchJob?.cancel()
         _videoUrl.value = null
         _imageUrl.value = null
@@ -49,11 +50,13 @@ class VideoViewModel : ViewModel() {
         _currentUrl.value = null
     }
 
+    // Modification : on ne considère comme "vide" que si l'URL de la vidéo est absente
     fun isDataNull() : Boolean{
-        return (_videoUrl.value == null) || (_imageUrl.value == null) || (_description.value == null) || (_videoUrlToShare.value == null)
+        return _videoUrl.value == null
     }
 
     fun fetchLinkVideo(url: String, title: String? = null) {
+        Log.d("VideoViewModel", "fetchLinkVideo started for URL: $url")
         resetLinkVideo()
         _currentUrl.value = url
         _title.value = title
@@ -61,17 +64,24 @@ class VideoViewModel : ViewModel() {
         fetchJob = viewModelScope.launch {
             try {
                 val response: Response<ResponseBody> = RetrofitInstance.api.getVideo(url)
+                Log.d("VideoViewModel", "Initial request status: ${response.code()}")
+                
                 if (response.isSuccessful) {
                     val responseBody = response.body()
                     if (responseBody != null) {
                         val htmlContent = responseBody.string()
-                        extractJpgImage(htmlContent)
+                        Log.d("VideoViewModel", "HTML received, length: ${htmlContent.length}")
+                        extractImageData(htmlContent)
                         parseHtmlForVideoUrl(htmlContent)
-                        extractCanevasText(htmlContent)
+                        extractDescription(htmlContent)
+                    } else {
+                        Log.e("VideoViewModel", "Response body is null")
                     }
+                } else {
+                    Log.e("VideoViewModel", "Request failed: ${response.errorBody()?.string()}")
                 }
             } catch (e: Exception) {
-                Log.e("FetchVideo", "Error: ${e.message}")
+                Log.e("VideoViewModel", "Error in fetchLinkVideo: ${e.message}", e)
             }
         }
     }
@@ -79,16 +89,30 @@ class VideoViewModel : ViewModel() {
     private suspend fun parseHtmlForVideoUrl(htmlContent: String) {
         val document: Document = Jsoup.parse(htmlContent)
         val iframes = document.select("iframe[src]")
+        Log.d("VideoViewModel", "Found ${iframes.size} iframes")
+        
         for (iframe in iframes) {
             val src = iframe.attr("src")
+            Log.d("VideoViewModel", "Iframe src: $src")
             _videoUrlToShare.value = src
             val videoId = src.substringAfterLast("/")
             val newHost = extractHostFromUrl(src)
+            Log.d("VideoViewModel", "Extracted Host: $newHost, VideoId: $videoId")
             fetchVideo(videoId, newHost)
+        }
+        
+        if (iframes.isEmpty()) {
+            Log.w("VideoViewModel", "No iframes found in the HTML content")
         }
     }
 
     private suspend fun fetchVideo(url: String, newHost: String) {
+        Log.d("VideoViewModel", "fetchVideo (iframe) started: $newHost$url")
+        if (newHost.isEmpty()) {
+            Log.e("VideoViewModel", "Host is empty, skipping fetchVideo")
+            return
+        }
+        
         withContext(Dispatchers.IO) {
             try {
                 val myApiCldTest = Retrofit.Builder()
@@ -98,23 +122,30 @@ class VideoViewModel : ViewModel() {
                     .create(ApiService::class.java)
                 
                 val response = myApiCldTest.getVideo(url)
+                Log.d("VideoViewModel", "Iframe fetch status: ${response.code()}")
                 
                 if (response.isSuccessful) {
                     val htmlContent = response.body()?.string()
                     if (htmlContent != null) {
+                        Log.d("VideoViewModel", "Iframe HTML length: ${htmlContent.length}")
                         extractM3U8Link(htmlContent)
+                    } else {
+                        Log.e("VideoViewModel", "Iframe body is null")
                     }
+                } else {
+                    Log.e("VideoViewModel", "Iframe request failed: ${response.errorBody()?.string()}")
                 }
             } catch (e: Exception) {
-                Log.e("VideoViewModel", "Error: ${e.message}")
+                Log.e("VideoViewModel", "Error in fetchVideo: ${e.message}", e)
             }
-            Unit // Assure que le bloc withContext ne retourne pas le résultat du if
+            Unit
         }
     }
 
     private fun extractM3U8Link(htmlContent: String) {
         val document: Document = Jsoup.parse(htmlContent)
         val scriptElements = document.getElementsByTag("script")
+        Log.d("VideoViewModel", "Searching for m3u8 in ${scriptElements.size} scripts")
 
         for (element in scriptElements) {
             val scriptData = element.data()
@@ -124,23 +155,75 @@ class VideoViewModel : ViewModel() {
                 val endIndex = normalizedData.indexOf("\"", startIndex)
                 if (startIndex != -1 && endIndex != -1) {
                     val extractedUrl = normalizedData.substring(startIndex, endIndex)
+                    Log.d("VideoViewModel", "SUCCESS: Found m3u8 URL: $extractedUrl")
                     _videoUrl.value = extractedUrl
                     return
                 }
             }
         }
+        Log.e("VideoViewModel", "Failed to find 'file:\"' in any script tag")
     }
 
-    private fun extractJpgImage(htmlContent: String): String? {
+    private fun extractImageData(htmlContent: String) {
         val document: Document = Jsoup.parse(htmlContent)
+        Log.d("VideoViewModel", "--- ANALYSE DES IMAGES ---")
+        
+        // 1. Chercher dans les meta tags (plus fiables)
+        val ogImage = document.select("meta[property=og:image]").attr("content")
+        val twitterImage = document.select("meta[name=twitter:image]").attr("content")
+        
+        Log.d("VideoViewModel", "Meta og:image: '$ogImage'")
+        Log.d("VideoViewModel", "Meta twitter:image: '$twitterImage'")
+
+        if (ogImage.isNotEmpty()) {
+            Log.d("VideoViewModel", "✅ SUCCESS: Image trouvée via og:image: $ogImage")
+            _imageUrl.value = ogImage
+            return
+        }
+        if (twitterImage.isNotEmpty()) {
+            Log.d("VideoViewModel", "✅ SUCCESS: Image trouvée via twitter:image: $twitterImage")
+            _imageUrl.value = twitterImage
+            return
+        }
+
+        // 2. Chercher les images dans le corps de la page
         val imgElements = document.getElementsByTag("img")
-        for (element in imgElements) {
-            val imgUrl = element.attr("src")
-            if (imgUrl.endsWith(".jpg", ignoreCase = true)) {
-                _imageUrl.value = imgUrl
+        Log.d("VideoViewModel", "Nombre de balises <img> trouvées: ${imgElements.size}")
+        
+        for ((index, element) in imgElements.withIndex()) {
+            val src = element.attr("src")
+            val dataSrc = element.attr("data-src")
+            val lazySrc = element.attr("lazy-src")
+            val alt = element.attr("alt")
+            val className = element.className()
+            
+            Log.d("VideoViewModel", "Img[$index] -> src: '$src', data-src: '$dataSrc', lazy-src: '$lazySrc', alt: '$alt', class: '$className'")
+
+            // On teste plusieurs attributs car certains sites utilisent le lazy-loading
+            val potentialUrl = when {
+                dataSrc.isNotEmpty() -> dataSrc
+                lazySrc.isNotEmpty() -> lazySrc
+                else -> src
+            }
+
+            if (potentialUrl.isNotEmpty()) {
+                val lowerUrl = potentialUrl.lowercase()
+                if (lowerUrl.endsWith(".jpg") || 
+                    lowerUrl.endsWith(".jpeg") || 
+                    lowerUrl.endsWith(".png") || 
+                    lowerUrl.endsWith(".webp") ||
+                    lowerUrl.contains("themoviedb.org") ||
+                    className.contains("poster", ignoreCase = true)) {
+                    
+                    Log.d("VideoViewModel", "✅ SUCCESS: Image matchée: $potentialUrl")
+                    _imageUrl.value = potentialUrl
+                    return
+                }
             }
         }
-        return null
+        
+        Log.w("VideoViewModel", "❌ Aucune image n'a matché les filtres")
+        _imageUrl.value = "https://via.placeholder.com/150"
     }
 
     private fun extractHostFromUrl(url: String): String {
@@ -149,18 +232,30 @@ class VideoViewModel : ViewModel() {
             val hostWithScheme = "${uri.scheme}://${uri.host}"
             "$hostWithScheme/iframe/"
         } catch (e: Exception) {
+            Log.e("VideoViewModel", "Error extracting host from $url: ${e.message}")
             ""
         }
     }
 
-    private fun extractCanevasText(htmlContent: String): String? {
+    private fun extractDescription(htmlContent: String) {
         val document: Document = Jsoup.parse(htmlContent)
+        
+        // 1. Chercher le texte dans "CANEVAS DU FILM"
         val canevasHeader = document.select("b i b:contains(CANEVAS DU FILM)").first()
+        var text: String? = null
+        
         if (canevasHeader != null) {
             val canevasParagraph = canevasHeader.parents().firstOrNull { it.tagName() == "p" }
                 ?.nextElementSibling()
-            _description.value = canevasParagraph?.text()
+            text = canevasParagraph?.text()
         }
-        return null
+        
+        // 2. Fallback sur la meta description si vide
+        if (text.isNullOrEmpty()) {
+            text = document.select("meta[name=description]").attr("content")
+        }
+
+        _description.value = if (!text.isNullOrEmpty()) text else "Aucune description disponible."
+        Log.d("VideoViewModel", "Description: ${_description.value?.take(50)}...")
     }
 }
