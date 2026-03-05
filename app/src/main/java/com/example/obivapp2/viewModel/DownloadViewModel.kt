@@ -3,7 +3,9 @@ package com.example.obivapp2.viewModel
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.util.Log
+import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.obivapp2.services.DownloadService
@@ -75,7 +77,10 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
             Log.d(TAG, "Démarrage de loadDownloadedVideos")
             val videoMap = mutableMapOf<String, DownloadedVideo>()
 
-            val downloadFolder = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "obivap movies")
+            // Mise à jour vers le dossier privé (même que dans DownloadService)
+            val app = getApplication<Application>()
+            val downloadFolder = File(app.getExternalFilesDir(null), "obivap movies")
+
             if (downloadFolder.exists() && downloadFolder.isDirectory) {
                 val files = downloadFolder.listFiles()
                 files?.forEach { file ->
@@ -187,6 +192,29 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
             }
             
             loadDownloadedVideos()
+        }
+    }
+
+    fun shareVideoFile(context: Context, video: DownloadedVideo) {
+        val file = File(video.filePath)
+        if (!file.exists()) return
+
+        try {
+            val contentUri: Uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.provider",
+                file
+            )
+
+            val shareIntent = Intent().apply {
+                action = Intent.ACTION_SEND
+                putExtra(Intent.EXTRA_STREAM, contentUri)
+                type = "video/*"
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(shareIntent, "Partager la vidéo"))
+        } catch (e: Exception) {
+            Log.e(TAG, "Erreur partage: ${e.message}")
         }
     }
 }

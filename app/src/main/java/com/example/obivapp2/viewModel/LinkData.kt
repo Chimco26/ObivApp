@@ -7,5 +7,9 @@ import androidx.room.PrimaryKey
 data class LinkData(
     @PrimaryKey val url: String, // L'URL sera la clé primaire (m3u8 URL)
     val text: String,
-    val filePath: String? = null
+    val filePath: String? = null,
+    val lastWatchedPosition: Long = 0L,
+    val totalDuration: Long = 0L,
+    val lastWatchedTimestamp: Long = 0L,
+    val imageUrl: String? = null
 )

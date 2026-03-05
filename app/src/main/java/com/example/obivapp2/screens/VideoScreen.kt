@@ -30,8 +30,10 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.navigation.NavController
+import com.example.obivapp2.database.AppDatabase
 import com.example.obivapp2.ui.theme.LiquidAccent
 import com.example.obivapp2.viewModel.DownloadViewModel
+import com.example.obivapp2.viewModel.LinkData
 import com.example.obivapp2.viewModel.VideoViewModel
 import com.google.android.exoplayer2.ExoPlayer
 import com.google.android.exoplayer2.MediaItem
@@ -55,6 +57,7 @@ fun VideoScreen(
 ) {
     val videoUrl by viewModel.videoUrl
     val videoTitle by viewModel.title
+    val imageUrl by viewModel.imageUrl
     val context = LocalContext.current
     val activity = context as? Activity
     val view = LocalView.current
@@ -69,6 +72,8 @@ fun VideoScreen(
     var isWaitingForDoubleTap by remember { mutableStateOf(false) }
     
     var lastInteractionTime by remember { mutableStateOf(System.currentTimeMillis()) }
+    
+    val linkDao = remember { AppDatabase.getDatabase(context).linkDao() }
 
     val resetControlsTimer = {
         lastInteractionTime = System.currentTimeMillis()
@@ -161,12 +166,62 @@ fun VideoScreen(
 
                 setMediaSource(mediaSource)
                 prepare()
-                playWhenReady = true
+                
+                // Charger la position sauvegardée
+                scope.launch {
+                    val linkData = linkDao.getLinkByUrl(url)
+                    linkData?.let {
+                        if (it.lastWatchedPosition > 0 && it.lastWatchedPosition < it.totalDuration - 5000) {
+                            seekTo(it.lastWatchedPosition)
+                        }
+                    }
+                    playWhenReady = true
+                }
             }
 
             exoPlayer = player
+            
+            // Sauvegarder la position périodiquement
+            val progressJob = scope.launch {
+                while (true) {
+                    delay(5000)
+                    exoPlayer?.let { p ->
+                        if (p.isPlaying) {
+                            linkDao.insert(
+                                LinkData(
+                                    url = url,
+                                    text = videoTitle ?: "Sans titre",
+                                    filePath = if (isLocalFile) url else null,
+                                    lastWatchedPosition = p.currentPosition,
+                                    totalDuration = p.duration,
+                                    lastWatchedTimestamp = System.currentTimeMillis(),
+                                    imageUrl = imageUrl
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+
             onDispose {
-                player.release()
+                progressJob.cancel()
+                exoPlayer?.let { p ->
+                    scope.launch {
+                        linkDao.insert(
+                            LinkData(
+                                url = url,
+                                text = videoTitle ?: "Sans titre",
+                                filePath = if (isLocalFile) url else null,
+                                lastWatchedPosition = p.currentPosition,
+                                totalDuration = p.duration,
+                                lastWatchedTimestamp = System.currentTimeMillis(),
+                                imageUrl = imageUrl
+                            )
+                        )
+                        p.stop() // Arrêt propre de la lecture
+                        p.release()
+                    }
+                }
                 exoPlayer = null
             }
         }
@@ -183,8 +238,7 @@ fun VideoScreen(
                     elevation = 0.dp,
                     navigationIcon = {
                         IconButton(onClick = { 
-                            exoPlayer?.release()
-                            exoPlayer = null
+                            exoPlayer?.stop() // On force l'arrêt
                             navController.popBackStack() 
                         }) {
                             Icon(Icons.Default.Close, contentDescription = "Fermer", tint = Color.White)
@@ -327,8 +381,7 @@ fun VideoScreen(
             isFullscreen = false
             resetControlsTimer()
         } else {
-            exoPlayer?.release()
-            exoPlayer = null
+            exoPlayer?.stop() // On force l'arrêt aussi sur le retour arrière
             navController.popBackStack()
         }
     }

@@ -134,7 +134,6 @@ class DownloadService : Service() {
     }
 
     private fun createForegroundNotification(videoTitle: String?): NotificationCompat.Builder {
-        // Créer l'intent d'annulation
         val cancelIntent = Intent(this, DownloadService::class.java).apply {
             action = ACTION_CANCEL_DOWNLOAD
         }
@@ -147,8 +146,8 @@ class DownloadService : Service() {
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle(videoTitle ?: "Téléchargement en cours")
-            .setContentText("Service actif")
+            .setContentTitle(videoTitle ?: "Téléchargement")
+            .setContentText("Initialisation...")
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .addAction(
@@ -179,8 +178,9 @@ class DownloadService : Service() {
                 val title = intent.getStringExtra(EXTRA_TITLE)
                 
                 if (url != null && !activeDownloads.containsKey(url)) {
-                    // Démarrer le service en premier plan
-                    startForeground(NOTIFICATION_ID, createForegroundNotification(title).build())
+                    if (activeDownloads.isEmpty()) {
+                        startForeground(NOTIFICATION_ID, createForegroundNotification(title).build())
+                    }
                     startDownload(url, title)
                 }
             }
@@ -190,8 +190,12 @@ class DownloadService : Service() {
                     activeDownloads[url]?.cancel()
                     cleanupDownloadData(url)
                     emitDownloadEvent(DownloadEvent.Cancelled(url))
+                    
+                    val notificationId = if (activeDownloads.keys.firstOrNull() == url) NOTIFICATION_ID else url.hashCode()
+                    notificationHelper?.cancelNotification(notificationId)
                 }
                 if (activeDownloads.isEmpty()) {
+                    stopForeground(true)
                     stopSelf()
                 }
             }
@@ -199,17 +203,12 @@ class DownloadService : Service() {
                 val url = intent.getStringExtra(EXTRA_URL)
                 if (url != null) {
                     if (pausedDownloads.contains(url)) {
-                        // Reprendre le téléchargement
                         pausedDownloads.remove(url)
-                        Log.d("DownloadService", "Reprise du téléchargement pour: $url")
                         emitDownloadEvent(DownloadEvent.Resumed(url))
                     } else {
-                        // Mettre en pause le téléchargement
                         pausedDownloads.add(url)
-                        Log.d("DownloadService", "Mise en pause du téléchargement pour: $url")
                         emitDownloadEvent(DownloadEvent.Paused(url))
                     }
-                    // Mettre à jour la notification avec l'état de pause
                     updateNotificationForPause(url)
                 }
             }
@@ -220,11 +219,7 @@ class DownloadService : Service() {
     private fun cleanupPartialFileForUrl(url: String) {
         partialFiles[url]?.let { file ->
             if (file.exists() && file.name.endsWith(TEMP_FILE_SUFFIX)) {
-                if (file.delete()) {
-                    Log.d("DownloadService", "Fichier partiel supprimé pour $url: ${file.name}")
-                } else {
-                    Log.e("DownloadService", "Échec de suppression du fichier partiel: ${file.name}")
-                }
+                file.delete()
             }
         }
         partialFiles.remove(url)
@@ -237,9 +232,9 @@ class DownloadService : Service() {
         val isPaused = pausedDownloads.contains(url)
         val videoTitle = videoTitles[url] ?: "Vidéo"
         
-        Log.d("DownloadService", "Mise à jour notification pour $url - Pause: $isPaused, Progression: $progress%")
+        // Utiliser NOTIFICATION_ID (1) pour le téléchargement principal, et url.hashCode() pour les autres
+        val notificationId = if (activeDownloads.keys.firstOrNull() == url) NOTIFICATION_ID else url.hashCode()
         
-        // Créer les intents pour les actions de la notification
         val pauseResumeIntent = Intent(this, DownloadService::class.java).apply {
             action = ACTION_TOGGLE_PAUSE_FROM_NOTIFICATION
             putExtra(EXTRA_URL, url)
@@ -257,13 +252,13 @@ class DownloadService : Service() {
         }
         val cancelPendingIntent = PendingIntent.getService(
             this,
-            url.hashCode() + 1000, // Différent request code pour éviter les conflits
+            url.hashCode() + 1000,
             cancelIntent,
             PendingIntent.FLAG_IMMUTABLE
         )
         
         notificationHelper?.showDownloadProgressNotificationWithActions(
-            notificationId = url.hashCode(),
+            notificationId = notificationId,
             title = videoTitle,
             progress = progress,
             downloadedSize = downloadedSize,
@@ -275,34 +270,22 @@ class DownloadService : Service() {
     }
 
     private fun startDownload(m3u8Url: String, videoTitle: String?) {
-        val notificationId = m3u8Url.hashCode()
-        
-        // Stocker le titre de la vidéo pour les notifications
         videoTitles[m3u8Url] = videoTitle ?: "Vidéo"
 
         val job = serviceScope.launch {
-            try {
-                Log.d("DownloadService", "Début du téléchargement M3U8: $m3u8Url")
+            // Ajouter à la liste des téléchargements actifs immédiatement
+            activeDownloads[m3u8Url] = coroutineContext[Job]!!
 
-                // Variables pour stocker les données du M3U8
+            try {
                 var segmentUrls: List<String> = emptyList()
 
-                // Utiliser la gestion réseau pour le téléchargement M3U8
                 executeWithNetworkRetry({
-                    val initialRequest = Request.Builder()
-                        .url(m3u8Url)
-                        .build()
-
+                    val initialRequest = Request.Builder().url(m3u8Url).build()
                     val response = client.newCall(initialRequest).execute()
-                    if (!response.isSuccessful) {
-                        throw IOException("Erreur lors de la requête initiale: ${response.code}")
-                    }
+                    if (!response.isSuccessful) throw IOException("Erreur: ${response.code}")
 
-                    val m3u8Body = response.body?.string() ?: throw Exception("Erreur : fichier M3U8 introuvable")
-                    
-                    if (m3u8Body.contains("Cloudflare")) {
-                        throw Exception("Protection Cloudflare détectée. Veuillez réessayer plus tard.")
-                    }
+                    val m3u8Body = response.body?.string() ?: throw Exception("M3U8 introuvable")
+                    if (m3u8Body.contains("Cloudflare")) throw Exception("Protection Cloudflare détectée")
 
                     val baseUrl = URL(m3u8Url)
                     val baseUrlString = "${baseUrl.protocol}://${baseUrl.host}${baseUrl.path.substringBeforeLast("/")}"
@@ -310,72 +293,38 @@ class DownloadService : Service() {
                     segmentUrls = m3u8Body.lines()
                         .filter { it.trim().isNotEmpty() && !it.startsWith("#") && (it.endsWith(".ts") || it.endsWith(".m4s")) }
                         .map { segmentPath ->
-                            if (segmentPath.startsWith("http")) {
-                                segmentPath
-                            } else {
-                                "$baseUrlString/${segmentPath.trimStart('/')}"
-                            }
+                            if (segmentPath.startsWith("http")) segmentPath else "$baseUrlString/${segmentPath.trimStart('/')}"
                         }
-
-                    if (segmentUrls.isEmpty()) {
-                        throw Exception("Aucun segment vidéo trouvé dans le fichier M3U8")
-                    }
+                    if (segmentUrls.isEmpty()) throw Exception("Aucun segment trouvé")
                 }, m3u8Url)
 
-                // LOG pour debug du titre reçu
-                Log.d("DownloadService", "Titre original reçu pour téléchargement: '$videoTitle'")
-
-                // On ne garde QUE les caractères autorisés par les systèmes de fichiers (FAT32/NTFS/ext4)
-                // On préserve explicitement les lettres accentuées (\p{L}), les chiffres (\p{N}), espaces, points, tirets et parenthèses.
                 val sanitizedTitle = videoTitle?.let { title ->
-                    title.replace(Regex("[\\\\/:*?\"<>|]"), "_") // Remplace uniquement les caractères de contrôle interdits
-                         .trim()
+                    title.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim()
                 } ?: "video"
-                
-                Log.d("DownloadService", "Titre après nettoyage (sanitizedTitle): '$sanitizedTitle'")
                 
                 val fileName = "${sanitizedTitle}.mp4"
                 val tempFileName = "$fileName$TEMP_FILE_SUFFIX"
+                val customDir = File(getExternalFilesDir(null), "obivap movies")
 
-                // Créer le dossier personnalisé pour les vidéos
-                val baseDownloadDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "obivap movies")
-                val customDir = baseDownloadDir
-
-                // Créer le dossier s'il n'existe pas
-                if (!customDir.exists()) {
-                    if (!customDir.mkdirs()) {
-                        throw Exception("Impossible de créer le dossier de destination: ${customDir.absolutePath}")
-                    }
-                }
+                if (!customDir.exists()) customDir.mkdirs()
                 
                 val tempFile = File(customDir, tempFileName)
                 val finalFile = File(customDir, fileName)
-                
-                Log.d("DownloadService", "Fichier final prévu: '${finalFile.absolutePath}'")
-                
-                // Enregistrer le fichier partiel pour ce téléchargement
                 partialFiles[m3u8Url] = tempFile
 
                 var totalDownloadedSize = 0L
                 tempFile.outputStream().use { output ->
                     segmentUrls.forEachIndexed { index, segmentUrl ->
-                        // Vérifier si le job a été annulé
                         ensureActive()
-
-                        // Gérer la pause pour cette URL spécifique
                         while (pausedDownloads.contains(m3u8Url)) {
                             delay(500)
                             ensureActive()
                         }
 
-                        // Calculer la progression basée sur le nombre de segments (beaucoup plus rapide)
                         val progress = ((index + 1) * 100) / segmentUrls.size
-
-                        // Émettre l'événement de progression
                         val isPaused = pausedDownloads.contains(m3u8Url)
                         emitDownloadEvent(DownloadEvent.Progress(m3u8Url, progress, totalDownloadedSize, 0L, isPaused))
 
-                        // Mettre à jour la notification seulement si la progression a changé
                         val lastProgress = downloadProgress[m3u8Url] ?: 0
                         if (progress > lastProgress || isPaused) {
                             downloadProgress[m3u8Url] = progress
@@ -383,66 +332,48 @@ class DownloadService : Service() {
                             updateNotificationForPause(m3u8Url)
                         }
 
-                        // Utiliser la gestion réseau pour chaque segment
-                        executeWithNetworkRetry(suspend {
-                            val segmentRequest = Request.Builder()
-                                .url(segmentUrl)
-                                .build()
-
+                        executeWithNetworkRetry({
+                            val segmentRequest = Request.Builder().url(segmentUrl).build()
                             val segmentResponse = client.newCall(segmentRequest).execute()
-                            if (!segmentResponse.isSuccessful) {
-                                throw Exception("Erreur lors du téléchargement du segment $index: ${segmentResponse.code}")
-                            }
+                            if (!segmentResponse.isSuccessful) throw Exception("Erreur segment $index: ${segmentResponse.code}")
 
-                            val inputStream: InputStream? = segmentResponse.body?.byteStream()
-                            inputStream?.use { input ->
+                            val body = segmentResponse.body ?: throw Exception("Corps de segment vide")
+                            body.byteStream().use { input ->
                                 val buffer = ByteArray(8192)
                                 var bytes = input.read(buffer)
                                 while (bytes >= 0) {
                                     ensureActive()
-                                    
                                     while (pausedDownloads.contains(m3u8Url)) {
                                         delay(500)
                                         ensureActive()
                                     }
-                                    
                                     output.write(buffer, 0, bytes)
                                     totalDownloadedSize += bytes
                                     bytes = input.read(buffer)
                                 }
-                            } ?: throw Exception("Erreur lors du téléchargement du segment $index")
+                            }
                         }, segmentUrl)
                     }
                 }
 
-                // Renommer le fichier temporaire en fichier final
-                if (!tempFile.renameTo(finalFile)) {
-                    throw Exception("Erreur lors de la finalisation du fichier (renommage impossible)")
-                }
+                if (!tempFile.renameTo(finalFile)) throw Exception("Erreur finalisation")
 
-                Log.d("DownloadService", "Téléchargement réussi. Fichier sauvegardé sous: '${finalFile.name}'")
-
-                // Enregistrer dans la base de données
                 val linkDao = AppDatabase.getDatabase(this@DownloadService).linkDao()
                 linkDao.insert(LinkData(url = m3u8Url, text = videoTitle ?: sanitizedTitle, filePath = finalFile.absolutePath))
 
-                // Déclencher le scan Média pour que MediaStore voit le fichier immédiatement avec sa taille
-                MediaScannerConnection.scanFile(this@DownloadService, arrayOf(finalFile.absolutePath), arrayOf("video/mp4")) { path, uri ->
-                    Log.d("DownloadService", "Scan média terminé pour $path -> $uri")
-                }
-
-                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-                notificationManager.cancel(notificationId)
+                // Déterminer l'ID de notification à utiliser pour la fin
+                val notificationId = if (activeDownloads.keys.firstOrNull() == m3u8Url) NOTIFICATION_ID else m3u8Url.hashCode()
 
                 emitDownloadEvent(DownloadEvent.Complete(m3u8Url, finalFile.absolutePath))
-
-                notificationHelper?.showDownloadCompleteNotification(
-                    notificationId = notificationId,
-                    title = sanitizedTitle,
-                    filePath = finalFile.absolutePath
-                )
+                notificationHelper?.showDownloadCompleteNotification(notificationId, sanitizedTitle, finalFile.absolutePath)
 
                 cleanupDownloadData(m3u8Url)
+                
+                // Si d'autres téléchargements sont en cours, promouvoir le suivant en foreground
+                val nextUrl = activeDownloads.keys.firstOrNull()
+                if (nextUrl != null && m3u8Url != nextUrl) {
+                    updateNotificationForPause(nextUrl)
+                }
 
                 if (activeDownloads.isEmpty()) {
                     stopForeground(true)
@@ -451,9 +382,8 @@ class DownloadService : Service() {
 
             } catch (e: CancellationException) {
                 cleanupPartialFileForUrl(m3u8Url)
-                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-                notificationManager.cancel(notificationId)
-                
+                val notificationId = if (activeDownloads.keys.firstOrNull() == m3u8Url) NOTIFICATION_ID else m3u8Url.hashCode()
+                notificationHelper?.cancelNotification(notificationId)
                 emitDownloadEvent(DownloadEvent.Cancelled(m3u8Url))
                 cleanupDownloadData(m3u8Url)
                 if (activeDownloads.isEmpty()) {
@@ -461,17 +391,10 @@ class DownloadService : Service() {
                     stopSelf()
                 }
             } catch (e: Exception) {
-                Log.e("DownloadService", "Erreur de téléchargement", e)
                 cleanupPartialFileForUrl(m3u8Url)
-                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-                notificationManager.cancel(notificationId)
-                
+                val notificationId = if (activeDownloads.keys.firstOrNull() == m3u8Url) NOTIFICATION_ID else m3u8Url.hashCode()
                 emitDownloadEvent(DownloadEvent.Error(m3u8Url, e.message ?: "Erreur inconnue"))
-                notificationHelper?.showDownloadErrorNotification(
-                    notificationId = notificationId,
-                    title = videoTitle ?: "Téléchargement",
-                    error = e.message ?: "Erreur inconnue"
-                )
+                notificationHelper?.showDownloadErrorNotification(notificationId, videoTitle ?: "Téléchargement", e.message ?: "Erreur inconnue")
                 cleanupDownloadData(m3u8Url)
                 if (activeDownloads.isEmpty()) {
                     stopForeground(true)
@@ -479,13 +402,10 @@ class DownloadService : Service() {
                 }
             }
         }
-        
-        activeDownloads[m3u8Url] = job
     }
 
     private fun setupNetworkMonitoring() {
         connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             networkCallback = object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) {
@@ -495,28 +415,12 @@ class DownloadService : Service() {
                         resumeDownloadsAfterNetworkRestore()
                     }
                 }
-
                 override fun onLost(network: Network) {
                     isNetworkAvailable = false
                     pauseDownloadsDueToNetworkLoss()
                 }
-
-                override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
-                    val hasInternet = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-                    val isValidated = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-                    
-                    if (hasInternet && isValidated && !isNetworkAvailable) {
-                        isNetworkAvailable = true
-                        networkRetryCount = 0
-                        resumeDownloadsAfterNetworkRestore()
-                    }
-                }
             }
-
-            val networkRequest = NetworkRequest.Builder()
-                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-                .build()
-            
+            val networkRequest = NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build()
             connectivityManager?.registerNetworkCallback(networkRequest, networkCallback!!)
         }
     }
@@ -542,60 +446,38 @@ class DownloadService : Service() {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val network = connectivityManager?.activeNetwork
             val capabilities = connectivityManager?.getNetworkCapabilities(network)
-            capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true &&
-            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
         } else {
             @Suppress("DEPRECATION")
-            val activeNetworkInfo = connectivityManager?.activeNetworkInfo
-            activeNetworkInfo?.isConnected == true
+            connectivityManager?.activeNetworkInfo?.isConnected == true
         }
     }
 
     private suspend fun waitForNetworkConnection(): Boolean {
         var attempts = 0
-        
         while (!isNetworkConnected() && attempts < NetworkConfig.MAX_WAIT_FOR_NETWORK_ATTEMPTS) {
             delay(NetworkConfig.NETWORK_RETRY_DELAY_MS)
             attempts++
         }
-        
         return isNetworkConnected()
     }
 
     private suspend fun executeWithNetworkRetry(operation: suspend () -> Unit, url: String) {
         var lastException: Exception? = null
-        
         repeat(NetworkConfig.MAX_NETWORK_RETRIES) { attempt ->
             try {
-                if (!isNetworkConnected()) {
-                    if (!waitForNetworkConnection()) {
-                        throw Exception("Pas de connexion réseau disponible après ${NetworkConfig.MAX_NETWORK_RETRIES} tentatives")
-                    }
-                }
-                
+                if (!isNetworkConnected() && !waitForNetworkConnection()) throw Exception("Pas de réseau")
                 operation()
                 return
-                
             } catch (e: Exception) {
                 lastException = e
-                
-                val isNetworkError = e is SocketTimeoutException || 
-                                   e is UnknownHostException ||
-                                   NetworkConfig.NETWORK_ERROR_KEYWORDS.any { keyword ->
-                                       e.message?.contains(keyword, ignoreCase = true) == true
-                                   }
-                
-                if (isNetworkError) {
-                    if (attempt < NetworkConfig.MAX_NETWORK_RETRIES - 1) {
-                        delay(NetworkConfig.NETWORK_RETRY_DELAY_MS * (attempt + 1))
-                        return@repeat
-                    }
-                } else {
-                    throw e
-                }
+                val isNetworkError = e is SocketTimeoutException || e is UnknownHostException || NetworkConfig.NETWORK_ERROR_KEYWORDS.any { e.message?.contains(it, ignoreCase = true) == true }
+                if (isNetworkError && attempt < NetworkConfig.MAX_NETWORK_RETRIES - 1) {
+                    delay(NetworkConfig.NETWORK_RETRY_DELAY_MS * (attempt + 1))
+                    return@repeat
+                } else throw e
             }
         }
-        
         throw lastException ?: Exception("Échec après ${NetworkConfig.MAX_NETWORK_RETRIES} tentatives")
     }
 

@@ -55,6 +55,7 @@ class VideoViewModel : ViewModel() {
         _title.value = title
         _imageUrl.value = imageUrl
         _description.value = description
+        _currentUrl.value = url
     }
 
     // Modification : on ne considère comme "vide" que si l'URL de la vidéo est absente

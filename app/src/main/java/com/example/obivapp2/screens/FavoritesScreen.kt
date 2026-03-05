@@ -23,11 +23,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
+import com.example.obivapp2.R
 import com.example.obivapp2.data.FavoriteMovie
 import com.example.obivapp2.ui.theme.GlassBorder
 import com.example.obivapp2.ui.theme.GlassWhite
@@ -68,7 +71,14 @@ fun FavoritesScreen(
         backgroundColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text("Mes Favoris", color = Color.White) },
+                title = {
+                    Text(
+                        text = "Mes Favoris",
+                        color = Color.White,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center
+                    )
+                },
                 backgroundColor = Color.Transparent,
                 elevation = 0.dp
             )
@@ -197,7 +207,18 @@ fun FavoritesScreen(
                                                             onCancelClick = { currentVideoUrl?.let { downloadViewModel.cancelDownload(it, context) } }
                                                         )
 
-                                                        IconButton(onClick = { navController.navigate("video") }) {
+                                                        IconButton(onClick = { 
+                                                            val currentState = downloadState
+                                                            if (currentState is DownloadState.Success) {
+                                                                videoViewModel.setVideoData(
+                                                                    url = currentState.filePath,
+                                                                    title = videoViewModel.title.value,
+                                                                    imageUrl = videoViewModel.imageUrl.value,
+                                                                    description = videoViewModel.description.value
+                                                                )
+                                                            }
+                                                            navController.navigate("video") 
+                                                        }) {
                                                             Icon(Icons.Default.PlayArrow, contentDescription = "Ouvrir", tint = Color.White)
                                                         }
                                                     }

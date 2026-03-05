@@ -40,6 +40,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -47,6 +49,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
+import com.example.obivapp2.R
 import com.example.obivapp2.data.FavoriteMovie
 import com.example.obivapp2.ui.theme.GlassBorder
 import com.example.obivapp2.ui.theme.GlassWhite
@@ -157,7 +160,9 @@ fun HomeScreen(
     LaunchedEffect(Unit) {
         try {
             errorMessage = null
-            mainViewModel.fetchLinks()
+            if (mainViewModel.links.value.isEmpty()) {
+                mainViewModel.fetchLinks()
+            }
             (context as? Activity)?.let { Permissions.requestAllPermissions(it) }
             downloadViewModel.setupDownloadEventListener()
         } catch (e: Exception) {
@@ -169,7 +174,14 @@ fun HomeScreen(
         backgroundColor = Color.Transparent,
         topBar = { 
             TopAppBar(
-                title = { Text("Obiv App", color = Color.White) },
+                title = { 
+                    Text(
+                        text = "Obiv App",
+                        color = Color.White,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center
+                    )
+                },
                 backgroundColor = Color.Transparent,
                 elevation = 0.dp
             ) 
@@ -177,7 +189,6 @@ fun HomeScreen(
     ) { paddingValues ->
         Box(modifier = Modifier.fillMaxSize().padding(paddingValues).pullRefresh(pullRefreshState)) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Le champ de recherche reste ici, en dehors du contenu défilable
                 OutlinedTextField(
                     value = searchText,
                     onValueChange = { searchText = it; mainViewModel.searchVideo(searchText) },
@@ -193,7 +204,6 @@ fun HomeScreen(
                     shape = RoundedCornerShape(12.dp)
                 )
 
-                // La zone défilable commence ici
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -313,7 +323,18 @@ fun HomeScreen(
                                                                 onCancelClick = { videoViewModel.videoUrl.value?.let { downloadViewModel.cancelDownload(it, context) } }
                                                             )
 
-                                                            IconButton(onClick = { navController.navigate("video") }) {
+                                                            IconButton(onClick = { 
+                                                                val currentState = downloadState
+                                                                if (currentState is DownloadState.Success) {
+                                                                    videoViewModel.setVideoData(
+                                                                        url = currentState.filePath,
+                                                                        title = videoViewModel.title.value,
+                                                                        imageUrl = videoViewModel.imageUrl.value,
+                                                                        description = videoViewModel.description.value
+                                                                    )
+                                                                }
+                                                                navController.navigate("video") 
+                                                            }) {
                                                                 Icon(Icons.Default.PlayArrow, contentDescription = "Ouvrir", tint = Color.White)
                                                             }
                                                         }

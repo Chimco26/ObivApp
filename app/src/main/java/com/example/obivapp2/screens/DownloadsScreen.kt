@@ -3,27 +3,34 @@ package com.example.obivapp2.screens
 import android.util.Log
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.example.obivapp2.R
 import com.example.obivapp2.ui.theme.GlassBorder
 import com.example.obivapp2.ui.theme.GlassWhite
 import com.example.obivapp2.ui.theme.LiquidAccent
@@ -42,6 +49,7 @@ fun DownloadsScreen(
     val downloadedVideos by downloadViewModel.downloadedVideos.collectAsState()
     var showTextDialog by remember { mutableStateOf(false) }
     var selectedFullText by remember { mutableStateOf("") }
+    val context = LocalContext.current
 
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var videoToDelete by remember { mutableStateOf<DownloadedVideo?>(null) }
@@ -50,7 +58,14 @@ fun DownloadsScreen(
         backgroundColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text("Mes Téléchargements", color = Color.White) },
+                title = {
+                    Text(
+                        text = "Mes Téléchargements",
+                        color = Color.White,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center
+                    )
+                },
                 backgroundColor = Color.Transparent,
                 elevation = 0.dp
             )
@@ -101,6 +116,9 @@ fun DownloadsScreen(
                                     onDeleteClick = {
                                         videoToDelete = video
                                         showDeleteConfirmDialog = true
+                                    },
+                                    onShareClick = {
+                                        downloadViewModel.shareVideoFile(context, video)
                                     },
                                     onLongClick = {
                                         selectedFullText = video.title
@@ -169,6 +187,7 @@ fun DownloadedVideoItem(
     video: DownloadedVideo,
     onPlayClick: () -> Unit,
     onDeleteClick: () -> Unit,
+    onShareClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
     val formattedSize = remember(video.size) {
@@ -189,15 +208,6 @@ fun DownloadedVideoItem(
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector = Icons.Default.PlayArrow,
-            contentDescription = null,
-            modifier = Modifier.size(40.dp),
-            tint = Color.White
-        )
-        
-        Spacer(modifier = Modifier.width(16.dp))
-        
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = video.title,
@@ -208,9 +218,17 @@ fun DownloadedVideoItem(
                 color = Color.White
             )
             Text(
-                text = "$formattedSize • MP4",
+                text = formattedSize,
                 fontSize = 12.sp,
                 color = Color.White.copy(alpha = 0.7f)
+            )
+        }
+
+        IconButton(onClick = onShareClick) {
+            Icon(
+                imageVector = Icons.Default.Share,
+                contentDescription = "Partager",
+                tint = Color.White.copy(alpha = 0.6f)
             )
         }
         
@@ -234,7 +252,6 @@ fun manualFormatSize(size: Long): String {
         index++
     }
     
-    // Si l'unité est Mo, Ko ou Octets (index < 3 pour GB), on n'affiche pas de virgule
     val pattern = if (index < 3) "%.0f %s" else "%.2f %s"
     return String.format(Locale.US, pattern, value, units[index])
 }
