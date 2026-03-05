@@ -6,6 +6,7 @@ import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.view.GestureDetector
 import android.view.MotionEvent
+import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -87,26 +88,55 @@ fun VideoScreen(
         }
     }
 
-    // Gestion du mode plein écran
+    // Gestion du mode plein écran et des insets
     LaunchedEffect(isFullscreen) {
         try {
             if (activity?.isFinishing == true || activity?.isDestroyed == true) return@LaunchedEffect
             window?.let { win ->
                 val windowInsetsController = WindowCompat.getInsetsController(win, view)
                 if (isFullscreen) {
+                    // Masquer les barres système
                     windowInsetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                     windowInsetsController.hide(WindowInsetsCompat.Type.systemBars())
+                    
+                    // Autoriser l'utilisation de l'espace de l'encoche (notch)
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                        win.attributes.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                    }
+                    
+                    // Permettre au contenu de s'étendre sur tout l'écran (Edge-to-Edge)
+                    WindowCompat.setDecorFitsSystemWindows(win, false)
+
                     delay(50)
                     if (activity?.isFinishing == true || activity?.isDestroyed == true) return@LaunchedEffect
                     activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
                 } else {
                     if (activity?.isFinishing == true || activity?.isDestroyed == true) return@LaunchedEffect
                     activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                    
                     windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
+                    
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                        win.attributes.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+                    }
+                    WindowCompat.setDecorFitsSystemWindows(win, true)
                 }
             }
         } catch (e: Exception) {
             Log.e("VideoScreen", "Erreur plein écran", e)
+        }
+    }
+
+    // Nettoyage lors de la sortie de l'écran pour restaurer les paramètres de la fenêtre
+    DisposableEffect(Unit) {
+        onDispose {
+            activity?.window?.let { win ->
+                WindowCompat.setDecorFitsSystemWindows(win, true)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                    win.attributes.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+                }
+                activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            }
         }
     }
 
@@ -230,6 +260,12 @@ fun VideoScreen(
                         view.setFullscreenButtonClickListener { isFullScreenMode ->
                             isFullscreen = isFullScreenMode
                             resetControlsTimer()
+                        }
+                        // Forcer le mode ZOOM en plein écran pour éliminer toutes les bandes noires
+                        view.resizeMode = if (isFullscreen) {
+                            AspectRatioFrameLayout.RESIZE_MODE_ZOOM 
+                        } else {
+                            AspectRatioFrameLayout.RESIZE_MODE_FIT
                         }
                     }
                 )
