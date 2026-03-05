@@ -7,8 +7,9 @@ import android.net.Uri
 import android.view.GestureDetector
 import android.view.MotionEvent
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -22,8 +23,9 @@ import com.google.android.exoplayer2.Player
 import com.google.android.exoplayer2.PlaybackException
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.Forward10
+import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -32,9 +34,11 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.example.obivapp2.viewModel.DownloadViewModel
+import com.google.android.exoplayer2.source.ProgressiveMediaSource
 import com.google.android.exoplayer2.source.hls.HlsMediaSource
 import com.google.android.exoplayer2.ui.AspectRatioFrameLayout
 import com.google.android.exoplayer2.ui.StyledPlayerView
+import com.google.android.exoplayer2.upstream.DefaultDataSource
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -61,102 +65,76 @@ fun VideoScreen(
     var showControls by remember { mutableStateOf(true) }
     var tapJob by remember { mutableStateOf<Job?>(null) }
     var isWaitingForDoubleTap by remember { mutableStateOf(false) }
+    
+    // Source de vérité pour le timer d'auto-masquage
+    var lastInteractionTime by remember { mutableStateOf(System.currentTimeMillis()) }
 
-    // Gestion du mode plein écran
-    LaunchedEffect(isFullscreen) {
-        try {
-            // Vérifier que l'activité est toujours valide
-            if (activity?.isFinishing == true || activity?.isDestroyed == true) {
-                return@LaunchedEffect
-            }
-            
-            window?.let { win ->
-                val windowInsetsController = WindowCompat.getInsetsController(win, view)
-                
-                if (isFullscreen) {
-                    // Cacher les barres système
-                    windowInsetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                    windowInsetsController.hide(WindowInsetsCompat.Type.systemBars())
-                    
-                    // Attendre un peu que les barres soient masquées
-                    delay(50)
-                    
-                    // Vérifier à nouveau que l'activité est valide
-                    if (activity?.isFinishing == true || activity?.isDestroyed == true) {
-                        return@LaunchedEffect
-                    }
-                    
-                    // Changer l'orientation
-                    activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-                } else {
-                    // Vérifier à nouveau que l'activité est valide
-                    if (activity?.isFinishing == true || activity?.isDestroyed == true) {
-                        return@LaunchedEffect
-                    }
-                    
-                    // Changer l'orientation d'abord
-                    activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-                    
-                    // Afficher les barres système
-                    windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("VideoScreen", "Erreur lors de la transition plein écran", e)
+    // Logique centrale : Réinitialise le timer et force l'affichage de TOUS les contrôles
+    val resetControlsTimer = {
+        lastInteractionTime = System.currentTimeMillis()
+        if (!showControls) {
+            showControls = true
         }
+        playerView?.showController()
     }
 
-    // Auto-masquage des contrôles
-    LaunchedEffect(showControls) {
+    // Masquage automatique centralisé (5 secondes d'inactivité)
+    LaunchedEffect(showControls, lastInteractionTime) {
         if (showControls) {
-            delay(3000)
+            delay(5000)
             showControls = false
             playerView?.hideController()
         }
     }
 
+    // Gestion du mode plein écran
+    LaunchedEffect(isFullscreen) {
+        try {
+            if (activity?.isFinishing == true || activity?.isDestroyed == true) return@LaunchedEffect
+            window?.let { win ->
+                val windowInsetsController = WindowCompat.getInsetsController(win, view)
+                if (isFullscreen) {
+                    windowInsetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    windowInsetsController.hide(WindowInsetsCompat.Type.systemBars())
+                    delay(50)
+                    if (activity?.isFinishing == true || activity?.isDestroyed == true) return@LaunchedEffect
+                    activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                } else {
+                    if (activity?.isFinishing == true || activity?.isDestroyed == true) return@LaunchedEffect
+                    activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                    windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("VideoScreen", "Erreur plein écran", e)
+        }
+    }
+
     DisposableEffect(videoUrl) {
         videoUrl?.let { url ->
+            val isLocalFile = url.startsWith("/") || url.startsWith("file://")
+            val isMp4 = url.lowercase().endsWith(".mp4") || url.lowercase().endsWith(".mkv")
+            
             val player = ExoPlayer.Builder(context).build().apply {
                 addListener(object : Player.Listener {
                     override fun onPlayerError(error: PlaybackException) {
-                        Log.e("VideoScreen", "Erreur lecture: ${error.message}")
+                        Log.e("VideoScreen", "Erreur lecture ($url): ${error.message}")
                     }
-                    
-                    override fun onPlaybackStateChanged(playbackState: Int) {
-                        when (playbackState) {
-                            Player.STATE_READY -> Log.d("VideoScreen", "Vidéo prête")
-                        }
+                    override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        resetControlsTimer()
                     }
                 })
 
-                val dataSourceFactory = DefaultHttpDataSource.Factory().apply {
-                    setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36")
-                    setAllowCrossProtocolRedirects(true)
-                    
-                    val uri = Uri.parse(url)
-                    val baseUrl = "${uri.scheme}://${uri.host}"
-                    
-                    val headers = mapOf(
-                        "Accept" to "*/*",
-                        "Accept-Encoding" to "identity",
-                        "Accept-Language" to "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
-                        "Cache-Control" to "no-cache",
-                        "Connection" to "keep-alive",
-                        "Referer" to baseUrl,
-                        "Origin" to baseUrl,
-                        "Sec-Fetch-Site" to "same-origin",
-                        "Sec-Fetch-Mode" to "cors",
-                        "Sec-Fetch-Dest" to "empty",
-                        "Sec-Ch-Ua" to "\"Google Chrome\";v=\"137\", \"Chromium\";v=\"137\", \"Not/A)Brand\";v=\"24\"",
-                        "Sec-Ch-Ua-Mobile" to "?0",
-                        "Sec-Ch-Ua-Platform" to "\"Windows\""
-                    )
-                    setDefaultRequestProperties(headers)
+                val mediaItem = MediaItem.fromUri(Uri.parse(url))
+                val mediaSource = if (isLocalFile || isMp4) {
+                    ProgressiveMediaSource.Factory(DefaultDataSource.Factory(context))
+                        .createMediaSource(mediaItem)
+                } else {
+                    HlsMediaSource.Factory(DefaultHttpDataSource.Factory().apply {
+                        setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36")
+                        setAllowCrossProtocolRedirects(true)
+                    }).createMediaSource(mediaItem)
                 }
-                
-                val mediaSource = HlsMediaSource.Factory(dataSourceFactory)
-                    .createMediaSource(MediaItem.fromUri(Uri.parse(url)))
 
                 setMediaSource(mediaSource)
                 prepare()
@@ -164,26 +142,18 @@ fun VideoScreen(
             }
 
             exoPlayer = player
-
             onDispose {
-                try {
-                    player.release()
-                    exoPlayer = null
-                } catch (e: Exception) {
-                    Log.e("VideoScreen", "Erreur lors de la libération du lecteur", e)
-                }
+                player.release()
+                exoPlayer = null
             }
         }
-
         onDispose { }
     }
 
     Scaffold(
         topBar = {
             if (!isFullscreen) {
-                TopAppBar(
-                    title = { Text(videoTitle ?: "Video Screen") }
-                )
+                TopAppBar(title = { Text(videoTitle ?: "Lecteur Vidéo") })
             }
         }
     ) { paddingValues ->
@@ -191,8 +161,8 @@ fun VideoScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(if (!isFullscreen) paddingValues else PaddingValues(0.dp))
+                .background(Color.Black)
         ) {
-            // Lecteur vidéo
             exoPlayer?.let { player ->
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
@@ -205,24 +175,30 @@ fun VideoScreen(
                             setShowPreviousButton(false)
                             setShowFastForwardButton(false)
                             setShowRewindButton(false)
-                            controllerHideOnTouch = false
-                            controllerAutoShow = false
-                            controllerShowTimeoutMs = 3000
                             
-                            // Créer un détecteur de gestes personnalisé
+                            // On laisse notre code Compose gérer le timeout
+                            controllerShowTimeoutMs = 0 
+                            
+                            // Synchronisation de l'état
+                            setControllerVisibilityListener(object : StyledPlayerView.ControllerVisibilityListener {
+                                override fun onVisibilityChanged(visibility: Int) {
+                                    showControls = visibility == android.view.View.VISIBLE
+                                    if (showControls) lastInteractionTime = System.currentTimeMillis()
+                                }
+                            })
+                            
                             val gestureDetector = GestureDetectorCompat(context, object : GestureDetector.SimpleOnGestureListener() {
                                 override fun onDown(e: MotionEvent): Boolean {
                                     isWaitingForDoubleTap = true
                                     tapJob?.cancel()
                                     tapJob = scope.launch {
-                                        delay(300) // Attendre pour voir si c'est un double tap
+                                        delay(300)
                                         if (isWaitingForDoubleTap) {
-                                            // Si on arrive ici, c'était un simple tap
-                                            showControls = !showControls
                                             if (showControls) {
-                                                playerView?.showController()
+                                                hideController()
+                                                showControls = false
                                             } else {
-                                                playerView?.hideController()
+                                                resetControlsTimer()
                                             }
                                             isWaitingForDoubleTap = false
                                         }
@@ -233,128 +209,89 @@ fun VideoScreen(
                                 override fun onDoubleTap(e: MotionEvent): Boolean {
                                     tapJob?.cancel()
                                     isWaitingForDoubleTap = false
-                                    val screenWidth = width
-                                    if (e.x < screenWidth / 2) {
-                                        player.seekTo(player.currentPosition - 10000)
-                                    } else {
-                                        player.seekTo(player.currentPosition + 10000)
-                                    }
+                                    if (e.x < width / 2) player.seekTo(player.currentPosition - 10000)
+                                    else player.seekTo(player.currentPosition + 10000)
+                                    resetControlsTimer()
                                     return true
-                                }
-
-                                override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                                    return true // On ne fait rien ici car géré dans onDown
                                 }
                             })
 
-                            // Configurer le gestionnaire de toucher
                             setOnTouchListener { v, event ->
-                                try {
-                                    when (event.action) {
-                                        MotionEvent.ACTION_DOWN -> {
-                                            v.performClick()
-                                        }
-                                        MotionEvent.ACTION_UP -> {
-                                            if (!isWaitingForDoubleTap) {
-                                                tapJob?.cancel()
-                                            }
-                                        }
-                                    }
-                                    gestureDetector.onTouchEvent(event)
-                                    true
-                                } catch (e: Exception) {
-                                    Log.e("VideoScreen", "Erreur dans le gestionnaire de toucher", e)
-                                    false
-                                }
+                                gestureDetector.onTouchEvent(event)
+                                true
                             }
-
-                            // Désactiver les contrôles par défaut
-                            setOnClickListener(null)
                             
+                            // Forcer l'affichage au lancement
+                            showController() 
                             playerView = this
                         }
                     },
                     update = { view ->
-                        try {
-                            view.setFullscreenButtonClickListener { isFullScreenMode ->
-                                isFullscreen = isFullScreenMode
-                            }
-                        } catch (e: Exception) {
-                            Log.e("VideoScreen", "Erreur dans la mise à jour du PlayerView", e)
+                        view.setFullscreenButtonClickListener { isFullScreenMode ->
+                            isFullscreen = isFullScreenMode
+                            resetControlsTimer()
                         }
                     }
                 )
             } ?: run {
-                CircularProgressIndicator(
-                    modifier = Modifier.align(Alignment.Center)
-                )
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             }
 
-            // Bouton de sortie du plein écran (visible seulement en mode plein écran)
-            if (isFullscreen) {
-                IconButton(
-                    onClick = { isFullscreen = false },
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(16.dp)
-                ) {
-                    Icon(
-                        Icons.Default.FullscreenExit,
-                        contentDescription = "Sortir du plein écran",
-                        tint = Color.White
-                    )
+            // Flèches personnalisées (liées à la même logique showControls)
+            if (showControls && exoPlayer != null) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    IconButton(
+                        onClick = { 
+                            exoPlayer?.let { it.seekTo(it.currentPosition - 10000) }
+                            resetControlsTimer()
+                        },
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(start = 48.dp)
+                            .size(64.dp)
+                            .background(Color.Black.copy(alpha = 0.3f), CircleShape)
+                    ) {
+                        Icon(Icons.Default.Replay10, null, tint = Color.White, modifier = Modifier.size(48.dp))
+                    }
+
+                    IconButton(
+                        onClick = { 
+                            exoPlayer?.let { it.seekTo(it.currentPosition + 10000) }
+                            resetControlsTimer()
+                        },
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 48.dp)
+                            .size(64.dp)
+                            .background(Color.Black.copy(alpha = 0.3f), CircleShape)
+                    ) {
+                        Icon(Icons.Default.Forward10, null, tint = Color.White, modifier = Modifier.size(48.dp))
+                    }
                 }
             }
 
-            // Indicateurs de double tap
-            if (showControls) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 32.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+            if (isFullscreen) {
+                IconButton(
+                    onClick = { 
+                        isFullscreen = false 
+                        resetControlsTimer()
+                    },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
                 ) {
-                    Surface(
-                        color = Color.Black.copy(alpha = 0.5f),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.padding(8.dp)
-                    ) {
-                        Text(
-                            "-10s",
-                            color = Color.White,
-                            modifier = Modifier.padding(8.dp)
-                        )
-                    }
-                    Surface(
-                        color = Color.Black.copy(alpha = 0.5f),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.padding(8.dp)
-                    ) {
-                        Text(
-                            "+10s",
-                            color = Color.White,
-                            modifier = Modifier.padding(8.dp)
-                        )
-                    }
+                    Icon(Icons.Default.FullscreenExit, null, tint = Color.White)
                 }
             }
         }
     }
 
-    // Gestion du retour arrière
     BackHandler {
         if (isFullscreen) {
             isFullscreen = false
+            resetControlsTimer()
         } else {
-            try {
-                exoPlayer?.release()
-                exoPlayer = null
-                navController.popBackStack()
-            } catch (e: Exception) {
-                Log.e("VideoScreen", "Erreur lors de la sortie", e)
-                navController.popBackStack()
-            }
+            exoPlayer?.release()
+            exoPlayer = null
+            navController.popBackStack()
         }
     }
 }
