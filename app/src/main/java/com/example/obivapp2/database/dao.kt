@@ -10,11 +10,17 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface LinkDao {
 
-    // Insère un lien, ignore les doublons
-    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    // Insère un lien, remplace si déjà présent (ex: mise à jour du filePath)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(link: LinkData)
 
-    // Récupère tous les liens depuis la base de données (utilise Flow pour un rafraîchissement automatique)
+    // Récupère tous les liens depuis la base de données
     @Query("SELECT * FROM links")
     fun getAllLinks(): Flow<List<LinkData>>
+
+    @Query("SELECT EXISTS(SELECT * FROM links WHERE url = :url)")
+    fun isDownloaded(url: String): Flow<Boolean>
+
+    @Query("DELETE FROM links WHERE url = :url")
+    suspend fun delete(url: String)
 }

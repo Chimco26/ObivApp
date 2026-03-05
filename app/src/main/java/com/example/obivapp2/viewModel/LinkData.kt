@@ -5,6 +5,7 @@ import androidx.room.PrimaryKey
 
 @Entity(tableName = "links") // Définit la table Room
 data class LinkData(
-    @PrimaryKey val url: String, // L'URL sera la clé primaire
-    val text: String
+    @PrimaryKey val url: String, // L'URL sera la clé primaire (m3u8 URL)
+    val text: String,
+    val filePath: String? = null
 )

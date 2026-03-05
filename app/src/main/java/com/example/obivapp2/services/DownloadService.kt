@@ -33,6 +33,8 @@ import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.text.Normalizer
 import android.media.MediaScannerConnection
+import com.example.obivapp2.database.AppDatabase
+import com.example.obivapp2.viewModel.LinkData
 
 class DownloadService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + Job())
@@ -86,22 +88,22 @@ class DownloadService : Service() {
         val downloadEvents: MutableStateFlow<DownloadEvent?> = _downloadEvents
     }
 
-    sealed class DownloadEvent {
+    sealed class DownloadEvent(open val url: String) {
         data class Progress(
-            val url: String,
+            override val url: String,
             val progress: Int,
             val downloadedSize: Long,
             val totalSize: Long,
             val isPaused: Boolean
-        ) : DownloadEvent()
+        ) : DownloadEvent(url)
         
-        data class Complete(val url: String, val filePath: String) : DownloadEvent()
-        data class Error(val url: String, val errorMessage: String) : DownloadEvent()
-        data class Paused(val url: String) : DownloadEvent()
-        data class Resumed(val url: String) : DownloadEvent()
-        data class Cancelled(val url: String) : DownloadEvent()
-        data class NetworkLost(val url: String) : DownloadEvent()
-        data class NetworkRestored(val url: String) : DownloadEvent()
+        data class Complete(override val url: String, val filePath: String) : DownloadEvent(url)
+        data class Error(override val url: String, val errorMessage: String) : DownloadEvent(url)
+        data class Paused(override val url: String) : DownloadEvent(url)
+        data class Resumed(override val url: String) : DownloadEvent(url)
+        data class Cancelled(override val url: String) : DownloadEvent(url)
+        data class NetworkLost(override val url: String) : DownloadEvent(url)
+        data class NetworkRestored(override val url: String) : DownloadEvent(url)
     }
 
     private var activeDownloads = mutableMapOf<String, Job>()
@@ -419,6 +421,10 @@ class DownloadService : Service() {
                 }
 
                 Log.d("DownloadService", "Téléchargement réussi. Fichier sauvegardé sous: '${finalFile.name}'")
+
+                // Enregistrer dans la base de données
+                val linkDao = AppDatabase.getDatabase(this@DownloadService).linkDao()
+                linkDao.insert(LinkData(url = m3u8Url, text = videoTitle ?: sanitizedTitle, filePath = finalFile.absolutePath))
 
                 // Déclencher le scan Média pour que MediaStore voit le fichier immédiatement avec sa taille
                 MediaScannerConnection.scanFile(this@DownloadService, arrayOf(finalFile.absolutePath), arrayOf("video/mp4")) { path, uri ->
