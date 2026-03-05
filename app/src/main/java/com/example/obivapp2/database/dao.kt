@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.example.obivapp2.viewModel.LinkData
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface LinkDao {
@@ -13,7 +14,7 @@ interface LinkDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(link: LinkData)
 
-    // Récupère tous les liens depuis la base de données
+    // Récupère tous les liens depuis la base de données (utilise Flow pour un rafraîchissement automatique)
     @Query("SELECT * FROM links")
-    suspend fun getAllLinks(): List<LinkData>
+    fun getAllLinks(): Flow<List<LinkData>>
 }

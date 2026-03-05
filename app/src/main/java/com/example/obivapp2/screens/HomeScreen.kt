@@ -22,6 +22,8 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
@@ -39,13 +41,14 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
+import com.example.obivapp2.data.FavoriteMovie
 import com.example.obivapp2.utils.Permissions
 import com.example.obivapp2.utils.shareLink
 import com.example.obivapp2.viewModel.DownloadState
 import com.example.obivapp2.viewModel.DownloadViewModel
+import com.example.obivapp2.viewModel.FavoritesViewModel
 import com.example.obivapp2.viewModel.VideoViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
-import java.io.File
 
 @Composable
 fun CreativeDownloadButton(
@@ -117,7 +120,8 @@ fun CreativeDownloadButton(
 fun HomeScreen(
     navController: NavController,
     mainViewModel: MainViewModel,
-    videoViewModel: VideoViewModel
+    videoViewModel: VideoViewModel,
+    favoritesViewModel: FavoritesViewModel
 ) {
     val links by mainViewModel.links
     val isLoading by mainViewModel.isLoading
@@ -147,7 +151,7 @@ fun HomeScreen(
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Home Screen") }) }
+        topBar = { TopAppBar(title = { Text("Obiv App") }) }
     ) { paddingValues ->
         Box(modifier = Modifier.fillMaxSize().padding(paddingValues).pullRefresh(pullRefreshState)) {
             Column(modifier = Modifier.fillMaxSize()) {
@@ -170,6 +174,8 @@ fun HomeScreen(
                     LazyColumn(modifier = Modifier.padding(8.dp).fillMaxSize()) {
                         items(links) { linkData ->
                             val currentIndex = links.indexOf(linkData)
+                            val isFav by favoritesViewModel.isFavorite(linkData.url).collectAsState(initial = false)
+
                             Card(
                                 shape = RoundedCornerShape(12.dp),
                                 elevation = 4.dp,
@@ -180,7 +186,35 @@ fun HomeScreen(
                                 }
                             ) {
                                 Column(modifier = Modifier.padding(16.dp).background(Color.White)) {
-                                    Text(text = linkData.text, modifier = Modifier.padding(bottom = 8.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = linkData.text,
+                                            modifier = Modifier.weight(1f),
+                                            style = MaterialTheme.typography.subtitle1
+                                        )
+                                        IconButton(onClick = {
+                                            favoritesViewModel.toggleFavorite(
+                                                FavoriteMovie(
+                                                    url = linkData.url,
+                                                    title = linkData.text,
+                                                    imageUrl = if (expandedItemIndex == currentIndex) imageUrl else null,
+                                                    description = if (expandedItemIndex == currentIndex) description else null,
+                                                    videoUrl = if (expandedItemIndex == currentIndex) videoViewModel.videoUrl.value else null
+                                                ),
+                                                isFav
+                                            )
+                                        }) {
+                                            Icon(
+                                                imageVector = if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                                contentDescription = "Favori",
+                                                tint = if (isFav) Color.Red else Color.Gray
+                                            )
+                                        }
+                                    }
 
                                     if (expandedItemIndex == currentIndex) {
                                         if (videoViewModel.isDataNull()) {
@@ -188,6 +222,9 @@ fun HomeScreen(
                                                 CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(48.dp), color = Color.Black)
                                             }
                                         } else {
+                                            // Mettre à jour les données du favori si on vient de l'ouvrir et qu'on l'ajoute
+                                            // En réalité, toggleFavorite utilisera les valeurs actuelles des State
+                                            
                                             Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
                                                 Image(
                                                     painter = rememberAsyncImagePainter(imageUrl),
@@ -196,18 +233,15 @@ fun HomeScreen(
                                                     modifier = Modifier.size(100.dp, 150.dp).clip(RoundedCornerShape(8.dp)).clickable { isDialogOpen = true }
                                                 )
                                                 Column(modifier = Modifier.weight(1f)) {
-                                                    // RANGÉE D'ACTIONS HARMONISÉE
                                                     Row(
                                                         verticalAlignment = Alignment.CenterVertically,
                                                         horizontalArrangement = Arrangement.SpaceBetween,
                                                         modifier = Modifier.fillMaxWidth()
                                                     ) {
-                                                        // GAUCHE : PARTAGER
                                                         IconButton(onClick = { videoViewModel.videoUrlToShare.value?.let { shareLink(context, it) } }) {
                                                             Icon(Icons.Default.Share, contentDescription = "Partager", tint = MaterialTheme.colors.primary)
                                                         }
                                                         
-                                                        // MILIEU : TÉLÉCHARGER (Progressif)
                                                         val videoUrl = videoViewModel.videoUrl.value
                                                         val downloadState by remember(videoUrl) {
                                                             videoUrl?.let { url -> downloadViewModel.getDownloadState(url) } ?: MutableStateFlow(DownloadState.Idle)
@@ -220,14 +254,13 @@ fun HomeScreen(
                                                             onCancelClick = { videoViewModel.videoUrl.value?.let { downloadViewModel.cancelDownload(it, context) } }
                                                         )
 
-                                                        // DROITE : LIRE
                                                         IconButton(onClick = { navController.navigate("video") }) {
                                                             Icon(Icons.Default.PlayArrow, contentDescription = "Ouvrir", tint = MaterialTheme.colors.primary)
                                                         }
                                                     }
                                                     
                                                     description?.let { 
-                                                        Text(text = it, modifier = Modifier.padding(top = 8.dp)) 
+                                                        Text(text = it, modifier = Modifier.padding(top = 8.dp), fontSize = 12.sp)
                                                     }
                                                 }
                                             }

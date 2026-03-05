@@ -50,6 +50,13 @@ class VideoViewModel : ViewModel() {
         _currentUrl.value = null
     }
 
+    fun setVideoData(url: String?, title: String?, imageUrl: String?, description: String?) {
+        _videoUrl.value = url
+        _title.value = title
+        _imageUrl.value = imageUrl
+        _description.value = description
+    }
+
     // Modification : on ne considère comme "vide" que si l'URL de la vidéo est absente
     fun isDataNull() : Boolean{
         return _videoUrl.value == null
