@@ -57,19 +57,39 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
     fun loadDownloadedVideos() {
         viewModelScope.launch {
             Log.d(TAG, "Démarrage de loadDownloadedVideos")
-            val videoList = mutableListOf<DownloadedVideo>()
+            val videoMap = mutableMapOf<String, DownloadedVideo>()
             val context = getApplication<Application>().applicationContext
 
+            // 1. Scan manuel dans le dossier obivap movies
+            val downloadFolder = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "obivap movies")
+            if (downloadFolder.exists() && downloadFolder.isDirectory) {
+                val files = downloadFolder.listFiles()
+                Log.d(TAG, "Scan manuel: ${files?.size ?: 0} fichiers trouvés")
+                files?.forEach { file ->
+                    if (file.isFile && (file.extension.lowercase() == "mp4" || file.extension.lowercase() == "mkv")) {
+                        val size = file.length()
+                        Log.d(TAG, "Fichier trouvé: ${file.name}, Taille détectée: $size octets")
+                        val video = DownloadedVideo(
+                            title = file.nameWithoutExtension.replace("_", " "),
+                            filePath = file.absolutePath,
+                            size = size,
+                            lastModified = file.lastModified()
+                        )
+                        videoMap[video.filePath] = video
+                    }
+                }
+            } else {
+                Log.w(TAG, "Le dossier 'obivap movies' n'existe pas ou n'est pas un répertoire")
+            }
+
+            // 2. MediaStore pour compléter/confirmer
             try {
                 val projection = arrayOf(
-                    MediaStore.Video.Media._ID,
                     MediaStore.Video.Media.DISPLAY_NAME,
                     MediaStore.Video.Media.SIZE,
                     MediaStore.Video.Media.DATE_MODIFIED,
                     MediaStore.Video.Media.DATA
                 )
-
-                // On filtre précisément sur le dossier "obivap movies"
                 val selection = "${MediaStore.Video.Media.DATA} LIKE ?"
                 val selectionArgs = arrayOf("%/obivap movies/%")
 
@@ -78,56 +98,57 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
                     projection,
                     selection,
                     selectionArgs,
-                    "${MediaStore.Video.Media.DATE_MODIFIED} DESC"
+                    null
                 )?.use { cursor ->
-                    Log.d(TAG, "MediaStore query retournée. Nombre de lignes: ${cursor.count}")
-                    
+                    Log.d(TAG, "MediaStore: ${cursor.count} vidéos trouvées via query")
                     val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
                     val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
                     val dateColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_MODIFIED)
                     val dataColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATA)
 
                     while (cursor.moveToNext()) {
-                        val name = cursor.getString(nameColumn)
-                        val size = cursor.getLong(sizeColumn)
-                        val date = cursor.getLong(dateColumn)
-                        val data = cursor.getString(dataColumn)
+                        val path = cursor.getString(dataColumn)
+                        val msSize = cursor.getLong(sizeColumn)
+                        
+                        val existing = videoMap[path]
+                        if (existing != null) {
+                            // Si le scan manuel a renvoyé 0 mais MediaStore a une taille, on prend celle de MediaStore
+                            if (existing.size <= 0 && msSize > 0) {
+                                Log.d(TAG, "Mise à jour taille MediaStore pour $path: $msSize")
+                                videoMap[path] = existing.copy(size = msSize)
+                            }
+                        } else {
+                            val name = cursor.getString(nameColumn)
+                            val date = cursor.getLong(dateColumn)
+                            var finalSize = msSize
+                            
+                            // Si MediaStore dit 0, on tente une dernière lecture directe
+                            if (finalSize <= 0) {
+                                try {
+                                    finalSize = File(path).length()
+                                    Log.d(TAG, "Lecture directe fallback pour $path: $finalSize")
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Erreur lecture fallback: ${e.message}")
+                                }
+                            }
 
-                        Log.d(TAG, "Vidéo cible trouvée: $name | Path: $data")
-
-                        if (name.lowercase().endsWith(".mp4") || name.lowercase().endsWith(".mkv")) {
-                            videoList.add(
-                                DownloadedVideo(
+                            if (name.lowercase().endsWith(".mp4") || name.lowercase().endsWith(".mkv")) {
+                                videoMap[path] = DownloadedVideo(
                                     title = name.replace(".mp4", "").replace(".mkv", "").replace("_", " "),
-                                    filePath = data,
-                                    size = size,
+                                    filePath = path,
+                                    size = finalSize,
                                     lastModified = date
                                 )
-                            )
+                            }
                         }
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Erreur lors de la requête MediaStore", e)
-            }
-            
-            // Scan manuel en secours uniquement pour le dossier cible
-            val legacyDir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "obivap movies")
-            if (legacyDir.exists() && legacyDir.isDirectory) {
-                legacyDir.listFiles()?.filter { 
-                    it.isFile && (it.extension.lowercase() == "mp4" || it.extension.lowercase() == "mkv") 
-                }?.forEach { file ->
-                    videoList.add(DownloadedVideo(
-                        title = file.nameWithoutExtension.replace("_", " "),
-                        filePath = file.absolutePath,
-                        size = file.length(),
-                        lastModified = file.lastModified()
-                    ))
-                }
+                Log.e(TAG, "Erreur durant la requête MediaStore: ${e.message}")
             }
 
-            val finalResult = videoList.distinctBy { it.filePath }.sortedByDescending { it.lastModified }
-            Log.d(TAG, "Chargement terminé. Total vidéos dans le dossier cible: ${finalResult.size}")
+            val finalResult = videoMap.values.sortedByDescending { it.lastModified }
+            Log.d(TAG, "Chargement fini. Nombre total de vidéos prêtes: ${finalResult.size}")
             _downloadedVideos.value = finalResult
         }
     }

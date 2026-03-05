@@ -31,6 +31,8 @@ import android.net.NetworkRequest
 import android.os.Build
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.text.Normalizer
+import android.media.MediaScannerConnection
 
 class DownloadService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + Job())
@@ -318,7 +320,18 @@ class DownloadService : Service() {
                     }
                 }, m3u8Url)
 
-                val sanitizedTitle = videoTitle?.replace(Regex("[^a-zA-Z0-9.-]"), "_") ?: "video"
+                // LOG pour debug du titre reçu
+                Log.d("DownloadService", "Titre original reçu pour téléchargement: '$videoTitle'")
+
+                // On ne garde QUE les caractères autorisés par les systèmes de fichiers (FAT32/NTFS/ext4)
+                // On préserve explicitement les lettres accentuées (\p{L}), les chiffres (\p{N}), espaces, points, tirets et parenthèses.
+                val sanitizedTitle = videoTitle?.let { title ->
+                    title.replace(Regex("[\\\\/:*?\"<>|]"), "_") // Remplace uniquement les caractères de contrôle interdits
+                         .trim()
+                } ?: "video"
+                
+                Log.d("DownloadService", "Titre après nettoyage (sanitizedTitle): '$sanitizedTitle'")
+                
                 val fileName = "${sanitizedTitle}.mp4"
                 val tempFileName = "$fileName$TEMP_FILE_SUFFIX"
 
@@ -335,6 +348,8 @@ class DownloadService : Service() {
                 
                 val tempFile = File(customDir, tempFileName)
                 val finalFile = File(customDir, fileName)
+                
+                Log.d("DownloadService", "Fichier final prévu: '${finalFile.absolutePath}'")
                 
                 // Enregistrer le fichier partiel pour ce téléchargement
                 partialFiles[m3u8Url] = tempFile
@@ -356,7 +371,6 @@ class DownloadService : Service() {
 
                         // Émettre l'événement de progression
                         val isPaused = pausedDownloads.contains(m3u8Url)
-                        // On passe 0 comme totalSize car on ne l'utilise plus pour le calcul
                         emitDownloadEvent(DownloadEvent.Progress(m3u8Url, progress, totalDownloadedSize, 0L, isPaused))
 
                         // Mettre à jour la notification seulement si la progression a changé
@@ -401,7 +415,14 @@ class DownloadService : Service() {
 
                 // Renommer le fichier temporaire en fichier final
                 if (!tempFile.renameTo(finalFile)) {
-                    throw Exception("Erreur lors de la finalisation du fichier")
+                    throw Exception("Erreur lors de la finalisation du fichier (renommage impossible)")
+                }
+
+                Log.d("DownloadService", "Téléchargement réussi. Fichier sauvegardé sous: '${finalFile.name}'")
+
+                // Déclencher le scan Média pour que MediaStore voit le fichier immédiatement avec sa taille
+                MediaScannerConnection.scanFile(this@DownloadService, arrayOf(finalFile.absolutePath), arrayOf("video/mp4")) { path, uri ->
+                    Log.d("DownloadService", "Scan média terminé pour $path -> $uri")
                 }
 
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager

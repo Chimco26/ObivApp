@@ -5,14 +5,20 @@ import android.app.Activity
 import androidx.compose.animation.animateColor
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.updateTransition
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
@@ -42,6 +48,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
 import com.example.obivapp2.data.FavoriteMovie
+import com.example.obivapp2.ui.theme.GlassBorder
+import com.example.obivapp2.ui.theme.GlassWhite
+import com.example.obivapp2.ui.theme.LiquidAccent
 import com.example.obivapp2.utils.Permissions
 import com.example.obivapp2.utils.shareLink
 import com.example.obivapp2.viewModel.DownloadState
@@ -64,8 +73,8 @@ fun CreativeDownloadButton(
         when (s) {
             is DownloadState.Success -> Color(0xFF4CAF50)
             is DownloadState.Error -> Color(0xFFF44336)
-            is DownloadState.Downloading -> if (s.isPaused) Color.Gray else MaterialTheme.colors.primary
-            else -> MaterialTheme.colors.primary
+            is DownloadState.Downloading -> if (s.isPaused) Color.Gray else LiquidAccent
+            else -> LiquidAccent
         }
     }
 
@@ -75,13 +84,13 @@ fun CreativeDownloadButton(
     ) {
         if (state is DownloadState.Idle) {
             IconButton(onClick = onDownloadClick) {
-                Icon(Icons.Default.Download, contentDescription = "Télécharger", tint = MaterialTheme.colors.primary)
+                Icon(Icons.Default.Download, contentDescription = "Télécharger", tint = Color.White)
             }
         } else {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
-                    .background(backgroundColor.copy(alpha = 0.1f), CircleShape)
+                    .background(backgroundColor.copy(alpha = 0.2f), CircleShape)
                     .padding(horizontal = 4.dp, vertical = 2.dp)
             ) {
                 Box(contentAlignment = Alignment.Center, modifier = Modifier.size(36.dp)) {
@@ -90,24 +99,24 @@ fun CreativeDownloadButton(
                         is DownloadState.Success -> 1f
                         else -> 0f
                     }
-                    CircularProgressIndicator(progress = 1f, color = backgroundColor.copy(alpha = 0.2f), strokeWidth = 2.dp, modifier = Modifier.size(28.dp))
+                    CircularProgressIndicator(progress = 1f, color = Color.White.copy(alpha = 0.1f), strokeWidth = 2.dp, modifier = Modifier.size(28.dp))
                     CircularProgressIndicator(progress = progress, color = backgroundColor, strokeWidth = 2.dp, modifier = Modifier.size(28.dp))
                     
                     if (state is DownloadState.Downloading) {
                         IconButton(onClick = onPauseResumeClick, modifier = Modifier.size(24.dp)) {
-                            Icon(imageVector = if (state.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause, contentDescription = null, tint = backgroundColor, modifier = Modifier.size(12.dp))
+                            Icon(imageVector = if (state.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
                         }
                     } else if (state is DownloadState.Success) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = backgroundColor, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                     } else if (state is DownloadState.Error) {
-                        Icon(Icons.Default.Error, contentDescription = null, tint = backgroundColor, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Error, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                     }
                 }
                 
                 if (state is DownloadState.Downloading) {
-                    Text(text = "${state.progress}%", fontSize = 10.sp, color = backgroundColor, modifier = Modifier.padding(horizontal = 2.dp))
+                    Text(text = "${state.progress}%", fontSize = 10.sp, color = Color.White, modifier = Modifier.padding(horizontal = 2.dp))
                     IconButton(onClick = onCancelClick, modifier = Modifier.size(24.dp)) {
-                        Icon(Icons.Default.Close, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(12.dp))
+                        Icon(Icons.Default.Close, contentDescription = null, tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(12.dp))
                     }
                 }
             }
@@ -115,7 +124,7 @@ fun CreativeDownloadButton(
     }
 }
 
-@OptIn(ExperimentalMaterialApi::class)
+@OptIn(ExperimentalMaterialApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
     navController: NavController,
@@ -131,12 +140,18 @@ fun HomeScreen(
     val imageUrl by videoViewModel.imageUrl
     val description by videoViewModel.description
     var isDialogOpen by remember { mutableStateOf(false) }
+    var showDescriptionDialog by remember { mutableStateOf(false) }
+    var selectedDescription by remember { mutableStateOf("") }
     val downloadViewModel: DownloadViewModel = viewModel()
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val pullRefreshState = rememberPullRefreshState(
         refreshing = isLoading,
-        onRefresh = { searchText = ""; mainViewModel.fetchLinks() }
+        onRefresh = { 
+            searchText = ""
+            expandedItemIndex = null
+            mainViewModel.fetchLinks() 
+        }
     )
 
     LaunchedEffect(Unit) {
@@ -151,145 +166,221 @@ fun HomeScreen(
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Obiv App") }) }
+        backgroundColor = Color.Transparent,
+        topBar = { 
+            TopAppBar(
+                title = { Text("Obiv App", color = Color.White) },
+                backgroundColor = Color.Transparent,
+                elevation = 0.dp
+            ) 
+        }
     ) { paddingValues ->
         Box(modifier = Modifier.fillMaxSize().padding(paddingValues).pullRefresh(pullRefreshState)) {
             Column(modifier = Modifier.fillMaxSize()) {
+                // Le champ de recherche reste ici, en dehors du contenu défilable
                 OutlinedTextField(
                     value = searchText,
                     onValueChange = { searchText = it; mainViewModel.searchVideo(searchText) },
-                    label = { Text("Rechercher") },
-                    modifier = Modifier.fillMaxWidth().padding(8.dp)
+                    label = { Text("Rechercher", color = Color.White.copy(alpha = 0.7f)) },
+                    modifier = Modifier.fillMaxWidth().padding(8.dp),
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        textColor = Color.White,
+                        cursorColor = LiquidAccent,
+                        focusedBorderColor = LiquidAccent,
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
+                        backgroundColor = Color.White.copy(alpha = 0.05f)
+                    ),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
-                if (errorMessage != null) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(text = errorMessage!!, color = Color.Red, modifier = Modifier.padding(16.dp))
-                    }
-                } else if (links.isEmpty() && !isLoading) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(text = "Aucun résultat trouvé", modifier = Modifier.padding(16.dp))
-                    }
-                } else {
-                    LazyColumn(modifier = Modifier.padding(8.dp).fillMaxSize()) {
-                        items(links) { linkData ->
-                            val currentIndex = links.indexOf(linkData)
-                            val isFav by favoritesViewModel.isFavorite(linkData.url).collectAsState(initial = false)
+                // La zone défilable commence ici
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    if (errorMessage != null) {
+                        Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                            Text(text = errorMessage!!, color = Color.Red, modifier = Modifier.padding(16.dp))
+                        }
+                    } else if (links.isEmpty() && !isLoading) {
+                        Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                            Text(text = "Aucun résultat trouvé", color = Color.White, modifier = Modifier.padding(16.dp))
+                        }
+                    } else {
+                        Card(
+                            modifier = Modifier
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                                .fillMaxWidth(),
+                            shape = RoundedCornerShape(24.dp),
+                            backgroundColor = GlassWhite,
+                            border = BorderStroke(1.dp, GlassBorder),
+                            elevation = 0.dp
+                        ) {
+                            Column {
+                                links.forEachIndexed { index, linkData ->
+                                    val isFav by favoritesViewModel.isFavorite(linkData.url).collectAsState(initial = false)
 
-                            Card(
-                                shape = RoundedCornerShape(12.dp),
-                                elevation = 4.dp,
-                                modifier = Modifier.animateContentSize().padding(vertical = 6.dp).fillMaxWidth().clickable {
-                                    videoViewModel.resetLinkVideo()
-                                    videoViewModel.fetchLinkVideo(linkData.url, linkData.text)
-                                    expandedItemIndex = if (expandedItemIndex == currentIndex) null else currentIndex
-                                }
-                            ) {
-                                Column(modifier = Modifier.padding(16.dp).background(Color.White)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .animateContentSize()
+                                            .combinedClickable(
+                                                onClick = {
+                                                    videoViewModel.resetLinkVideo()
+                                                    videoViewModel.fetchLinkVideo(linkData.url, linkData.text)
+                                                    expandedItemIndex = if (expandedItemIndex == index) null else index
+                                                },
+                                                onLongClick = {
+                                                    if (expandedItemIndex == index && description != null) {
+                                                        selectedDescription = description!!
+                                                        showDescriptionDialog = true
+                                                    } else {
+                                                        selectedDescription = linkData.text
+                                                        showDescriptionDialog = true
+                                                    }
+                                                }
+                                            )
+                                            .padding(horizontal = 16.dp, vertical = 12.dp)
                                     ) {
-                                        Text(
-                                            text = linkData.text,
-                                            modifier = Modifier.weight(1f),
-                                            style = MaterialTheme.typography.subtitle1
-                                        )
-                                        IconButton(onClick = {
-                                            favoritesViewModel.toggleFavorite(
-                                                FavoriteMovie(
-                                                    url = linkData.url,
-                                                    title = linkData.text,
-                                                    imageUrl = if (expandedItemIndex == currentIndex) imageUrl else null,
-                                                    description = if (expandedItemIndex == currentIndex) description else null,
-                                                    videoUrl = if (expandedItemIndex == currentIndex) videoViewModel.videoUrl.value else null
-                                                ),
-                                                isFav
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = linkData.text,
+                                                modifier = Modifier.weight(1f),
+                                                style = MaterialTheme.typography.subtitle1,
+                                                color = Color.White
                                             )
-                                        }) {
-                                            Icon(
-                                                imageVector = if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                                contentDescription = "Favori",
-                                                tint = if (isFav) Color.Red else Color.Gray
-                                            )
-                                        }
-                                    }
-
-                                    if (expandedItemIndex == currentIndex) {
-                                        if (videoViewModel.isDataNull()) {
-                                            Box(modifier = Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
-                                                CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(48.dp), color = Color.Black)
-                                            }
-                                        } else {
-                                            // Mettre à jour les données du favori si on vient de l'ouvrir et qu'on l'ajoute
-                                            // En réalité, toggleFavorite utilisera les valeurs actuelles des State
-                                            
-                                            Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
-                                                Image(
-                                                    painter = rememberAsyncImagePainter(imageUrl),
-                                                    contentDescription = null,
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier.size(100.dp, 150.dp).clip(RoundedCornerShape(8.dp)).clickable { isDialogOpen = true }
+                                            IconButton(onClick = {
+                                                favoritesViewModel.toggleFavorite(
+                                                    FavoriteMovie(
+                                                        url = linkData.url,
+                                                        title = linkData.text,
+                                                        imageUrl = if (expandedItemIndex == index) imageUrl else null,
+                                                        description = if (expandedItemIndex == index) description else null,
+                                                        videoUrl = if (expandedItemIndex == index) videoViewModel.videoUrl.value else null
+                                                    ),
+                                                    isFav
                                                 )
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                                        modifier = Modifier.fillMaxWidth()
-                                                    ) {
-                                                        IconButton(onClick = { videoViewModel.videoUrlToShare.value?.let { shareLink(context, it) } }) {
-                                                            Icon(Icons.Default.Share, contentDescription = "Partager", tint = MaterialTheme.colors.primary)
+                                            }) {
+                                                Icon(
+                                                    imageVector = if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                                    contentDescription = "Favori",
+                                                    tint = if (isFav) Color.Red else Color.White.copy(alpha = 0.6f)
+                                                )
+                                            }
+                                        }
+
+                                        if (expandedItemIndex == index) {
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                            if (videoViewModel.isDataNull()) {
+                                                Box(modifier = Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
+                                                    CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(48.dp), color = LiquidAccent)
+                                                }
+                                            } else {
+                                                Row(
+                                                    horizontalArrangement = Arrangement.spacedBy(16.dp), 
+                                                    modifier = Modifier.fillMaxWidth().height(150.dp)
+                                                ) {
+                                                    Image(
+                                                        painter = rememberAsyncImagePainter(imageUrl),
+                                                        contentDescription = null,
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier.size(100.dp, 150.dp).clip(RoundedCornerShape(12.dp)).clickable { isDialogOpen = true }
+                                                    )
+                                                    Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            modifier = Modifier.fillMaxWidth()
+                                                        ) {
+                                                            IconButton(onClick = { videoViewModel.videoUrlToShare.value?.let { shareLink(context, it) } }) {
+                                                                Icon(Icons.Default.Share, contentDescription = "Partager", tint = Color.White)
+                                                            }
+                                                            
+                                                            val videoUrl = videoViewModel.videoUrl.value
+                                                            val downloadState by remember(videoUrl) {
+                                                                videoUrl?.let { url -> downloadViewModel.getDownloadState(url) } ?: MutableStateFlow(DownloadState.Idle)
+                                                            }.collectAsState()
+
+                                                            CreativeDownloadButton(
+                                                                state = downloadState,
+                                                                onDownloadClick = { videoViewModel.videoUrl.value?.let { downloadViewModel.downloadM3U8(it, context, videoViewModel.title.value) } },
+                                                                onPauseResumeClick = { videoViewModel.videoUrl.value?.let { downloadViewModel.togglePauseResume(it, context) } },
+                                                                onCancelClick = { videoViewModel.videoUrl.value?.let { downloadViewModel.cancelDownload(it, context) } }
+                                                            )
+
+                                                            IconButton(onClick = { navController.navigate("video") }) {
+                                                                Icon(Icons.Default.PlayArrow, contentDescription = "Ouvrir", tint = Color.White)
+                                                            }
                                                         }
                                                         
-                                                        val videoUrl = videoViewModel.videoUrl.value
-                                                        val downloadState by remember(videoUrl) {
-                                                            videoUrl?.let { url -> downloadViewModel.getDownloadState(url) } ?: MutableStateFlow(DownloadState.Idle)
-                                                        }.collectAsState()
-
-                                                        CreativeDownloadButton(
-                                                            state = downloadState,
-                                                            onDownloadClick = { videoViewModel.videoUrl.value?.let { downloadViewModel.downloadM3U8(it, context, videoViewModel.title.value) } },
-                                                            onPauseResumeClick = { videoViewModel.videoUrl.value?.let { downloadViewModel.togglePauseResume(it, context) } },
-                                                            onCancelClick = { videoViewModel.videoUrl.value?.let { downloadViewModel.cancelDownload(it, context) } }
-                                                        )
-
-                                                        IconButton(onClick = { navController.navigate("video") }) {
-                                                            Icon(Icons.Default.PlayArrow, contentDescription = "Ouvrir", tint = MaterialTheme.colors.primary)
+                                                        description?.let { 
+                                                            Box(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                                                                Text(text = it, modifier = Modifier.padding(top = 8.dp).clickable { 
+                                                                    selectedDescription = it
+                                                                    showDescriptionDialog = true
+                                                                }, fontSize = 12.sp, color = Color.White.copy(alpha = 0.8f))
+                                                            }
                                                         }
-                                                    }
-                                                    
-                                                    description?.let { 
-                                                        Text(text = it, modifier = Modifier.padding(top = 8.dp), fontSize = 12.sp)
                                                     }
                                                 }
                                             }
                                         }
                                     }
+                                    
+                                    if (index < links.size - 1) {
+                                        Divider(
+                                            color = Color.White.copy(alpha = 0.1f),
+                                            thickness = 1.dp,
+                                            modifier = Modifier.padding(horizontal = 16.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
+                    Spacer(modifier = Modifier.height(100.dp))
                 }
             }
-
-            if (links.isNotEmpty()) {
-                PullRefreshIndicator(refreshing = isLoading, state = pullRefreshState, modifier = Modifier.align(Alignment.TopCenter), backgroundColor = Color.White, contentColor = MaterialTheme.colors.primary)
-            }
-
-            if (isLoading && links.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = MaterialTheme.colors.primary, modifier = Modifier.size(48.dp))
-                }
-            }
+            
+            PullRefreshIndicator(
+                refreshing = isLoading, 
+                state = pullRefreshState, 
+                modifier = Modifier.align(Alignment.TopCenter), 
+                backgroundColor = GlassWhite, 
+                contentColor = LiquidAccent
+            )
         }
 
         if (isDialogOpen) {
             Dialog(onDismissRequest = { isDialogOpen = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-                Box(modifier = Modifier.fillMaxSize().clickable { isDialogOpen = false }) {
-                    Image(painter = rememberAsyncImagePainter(imageUrl), contentDescription = null, modifier = Modifier.align(Alignment.Center).fillMaxSize(), contentScale = ContentScale.Fit)
+                Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.8f)).clickable { isDialogOpen = false }) {
+                    Image(painter = rememberAsyncImagePainter(imageUrl), contentDescription = null, modifier = Modifier.align(Alignment.Center).fillMaxSize().padding(16.dp), contentScale = ContentScale.Fit)
                 }
             }
+        }
+
+        if (showDescriptionDialog) {
+            AlertDialog(
+                onDismissRequest = { showDescriptionDialog = false },
+                title = { Text("Détails", color = Color.White) },
+                text = { 
+                    Box(modifier = Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+                        Text(selectedDescription, color = Color.White) 
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showDescriptionDialog = false }) {
+                        Text("Fermer", color = LiquidAccent)
+                    }
+                },
+                backgroundColor = Color(0xFF1A237E),
+                shape = RoundedCornerShape(16.dp)
+            )
         }
     }
 }
